@@ -50,6 +50,8 @@ button { font-family: inherit; cursor: pointer; }
 .tab.active { color: #fff; border-bottom-color: #fff; font-weight: 600; }
 
 .container { max-width: 1280px; margin: 0 auto; padding: 24px; }
+/* Vista de ancho completo para la tabla de tickets */
+.container-fluid { max-width: 100%; margin: 0; padding: 20px 28px; }
 
 /* ---------- Buttons ---------- */
 .btn {
@@ -90,9 +92,10 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 /* ---------- Table ---------- */
-.table-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
-table { width: 100%; border-collapse: collapse; }
+.table-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow-x: auto; box-shadow: var(--shadow); }
+table { width: 100%; border-collapse: collapse; min-width: 1100px; }
 th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+td:last-child, th:last-child { white-space: nowrap; padding-right: 18px; }
 th { background: #f8fafc; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); }
 tbody tr:hover { background: #f8fafc; }
 tbody tr:last-child td { border-bottom: none; }
@@ -106,7 +109,17 @@ tbody tr:last-child td { border-bottom: none; }
 .estado-cerrado { color: var(--cerrado); font-weight: 700; }
 .clasif-tag { font-size: 11px; color: var(--muted); display: block; margin-top: 2px; }
 
-.row-actions { display: flex; gap: 2px; }
+.codigo-cell { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12px; font-weight: 600; color: var(--brand); white-space: nowrap; }
+.desc-cell { max-width: 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); cursor: help; }
+
+.row-actions { display: flex; gap: 2px; flex-wrap: nowrap; }
+
+/* Control segmentado Hoy / Todos */
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg-btn { border: none; background: #fff; padding: 8px 14px; font-size: 14px; color: var(--text); }
+.seg-btn + .seg-btn { border-left: 1px solid var(--border); }
+.seg-btn:hover { background: #f8fafc; }
+.seg-btn.active { background: var(--brand-light); color: #fff; }
 .icon-note { color: var(--brand-light); }
 .cell-check { width: 36px; text-align: center; }
 
@@ -199,3 +212,19 @@ tbody tr:last-child td { border-bottom: none; }
 .split-row { font-size: 13px; }
 .split-row .bar-track { height: 10px; background: #f1f5f9; border-radius: 999px; overflow: hidden; margin-top: 4px; }
 .split-row .bar-fill { height: 100%; border-radius: 999px; }
+
+/* ---------- DateTimePicker ---------- */
+.dt-picker { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.dt-date { flex: 1; min-width: 150px; border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; font-size: 14px; font-family: inherit; }
+.dt-time { display: flex; align-items: center; gap: 6px; }
+.dt-time select { border: 1px solid var(--border); border-radius: 8px; padding: 9px 8px; font-size: 14px; font-family: inherit; background: #fff; }
+.dt-sep { font-weight: 700; color: var(--muted); }
+.dt-h24 { font-size: 11px; color: var(--muted); margin-left: 2px; }
+
+/* ---------- Adjuntos ---------- */
+.file-list { display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; }
+.file-row { display: flex; align-items: center; gap: 10px; background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; }
+.file-row .fname { flex: 1; word-break: break-all; }
+.file-row a { color: var(--brand-light); text-decoration: none; font-weight: 600; font-size: 13px; }
+.file-row .fdel { color: #dc2626; }
+.icon-clip { color: var(--brand-light); }

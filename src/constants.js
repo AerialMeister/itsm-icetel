@@ -7,10 +7,12 @@ export const TIPOS = [
   { value: 'incidente',                label: 'Incidente',                color: '#dc2626', icon: 'alert' },
 ]
 
+// Ordenadas de menor a mayor urgencia (izquierda a derecha)
 export const CLASIFICACIONES_INCIDENTE = [
-  { value: 'urgente',    label: 'Urgente' },
-  { value: 'no_urgente', label: 'No urgente' },
   { value: 'averia',     label: 'Avería' },
+  { value: 'no_urgente', label: 'No urgente' },
+  { value: 'urgente',    label: 'Urgente' },
+  { value: 'critico',    label: 'Crítico' },
 ]
 
 export const AREAS = [

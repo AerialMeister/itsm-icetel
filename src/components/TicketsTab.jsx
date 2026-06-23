@@ -1,57 +1,105 @@
 import { useState, useMemo } from 'react'
 import { TIPOS, tipoLabel, tipoColor, clasifLabel, areaLabel } from '../constants'
-import { TIPO_ICONS, IconPencil, IconNote, IconPlus, IconLock } from './Icons'
+import { TIPO_ICONS, IconPencil, IconNote, IconPlus, IconLock, IconClip, IconDownload } from './Icons'
 import TicketForm from './TicketForm'
 import CommentsModal from './CommentsModal'
 import CloseTicketModal from './CloseTicketModal'
+import AttachmentsModal from './AttachmentsModal'
 
 const fmt = (iso) => (iso ? new Date(iso).toLocaleString('es-CL', { hour12: false, dateStyle: 'short', timeStyle: 'short' }) : '—')
 
-export default function TicketsTab({ tickets, commentCounts, loading, reload }) {
+// Pequeño badge con contador reutilizable (observaciones / adjuntos)
+function CountBadge({ children, count, active }) {
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex' }}>
+      {children}
+      {count > 0 && (
+        <span style={{
+          position: 'absolute', top: -6, right: -8, background: '#1d4ed8', color: '#fff',
+          borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '0 4px', lineHeight: '14px',
+        }}>{count}</span>
+      )}
+    </span>
+  )
+}
+
+export default function TicketsTab({ tickets, commentCounts, attachmentCounts, loading, reload }) {
   const [showForm, setShowForm] = useState(false)
   const [editTicket, setEditTicket] = useState(null)
   const [commentTicket, setCommentTicket] = useState(null)
-  const [selected, setSelected] = useState(new Set())
-  const [showClose, setShowClose] = useState(false)
+  const [attachTicket, setAttachTicket] = useState(null)
+  const [closeTicket, setCloseTicket] = useState(null)
 
   const [search, setSearch] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
+  const [scope, setScope] = useState('todos') // 'todos' | 'hoy' (por defecto: todos)
+
+  const esHoy = (iso) => {
+    if (!iso) return false
+    const d = new Date(iso); const n = new Date()
+    return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate()
+  }
 
   const filtered = useMemo(() => {
     return tickets.filter((t) => {
+      if (scope === 'hoy' && !esHoy(t.fecha_inicio)) return false
       if (filtroTipo && t.tipo_ticket !== filtroTipo) return false
       if (filtroEstado && t.estado !== filtroEstado) return false
       if (search) {
         const s = search.toLowerCase()
-        const hay = [t.titulo, t.descripcion, t.sala, t.activo].filter(Boolean).join(' ').toLowerCase()
+        const hay = [t.codigo, t.titulo, t.descripcion, t.sala, t.activo].filter(Boolean).join(' ').toLowerCase()
         if (!hay.includes(s)) return false
       }
       return true
     })
-  }, [tickets, search, filtroTipo, filtroEstado])
-
-  const toggleSel = (id) => {
-    const next = new Set(selected)
-    next.has(id) ? next.delete(id) : next.add(id)
-    setSelected(next)
-  }
-
-  // Solo se pueden cerrar tickets abiertos
-  const selectedOpen = tickets.filter((t) => selected.has(t.id) && t.estado === 'abierto')
+  }, [tickets, search, filtroTipo, filtroEstado, scope])
 
   const afterSave = () => { setShowForm(false); setEditTicket(null); reload() }
-  const afterClose = () => { setShowClose(false); setSelected(new Set()); reload() }
+  const afterClose = () => { setCloseTicket(null); reload() }
+
+  // Exporta los tickets visibles (con filtros aplicados) a CSV compatible con Excel
+  const descargarCSV = () => {
+    const headers = ['Código', 'Tipo', 'Clasificación', 'Título', 'Descripción', 'Sala', 'Activo', 'Área', 'Inicio', 'Cierre', 'Estado']
+    const cell = (iso) => (iso ? new Date(iso).toLocaleString('es-CL', { hour12: false }) : '')
+    const rows = filtered.map((t) => [
+      t.codigo || '',
+      tipoLabel(t.tipo_ticket),
+      t.clasificacion_incidente ? clasifLabel(t.clasificacion_incidente) : '',
+      t.titulo || '',
+      t.descripcion || '',
+      t.sala || '',
+      t.activo || '',
+      t.area ? areaLabel(t.area) : '',
+      cell(t.fecha_inicio),
+      cell(t.fecha_cierre),
+      t.estado === 'abierto' ? 'Abierto' : 'Cerrado',
+    ])
+    const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"'
+    const csv = [headers, ...rows].map((r) => r.map(esc).join(';')).join('\r\n')
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `tickets_icetel_${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
-    <div className="container">
+    <div className="container-fluid">
       <div className="toolbar">
         <button className="btn btn-primary" onClick={() => setShowForm(true)}>
           <IconPlus size={16} /> Ingresar nuevo ticket
         </button>
 
-        <input className="search-input" placeholder="Buscar título, sala, activo…"
-          value={search} onChange={(e) => setSearch(e.target.value)} style={{ minWidth: 230 }} />
+        <div className="seg">
+          <button className={'seg-btn' + (scope === 'hoy' ? ' active' : '')} onClick={() => setScope('hoy')}>Hoy</button>
+          <button className={'seg-btn' + (scope === 'todos' ? ' active' : '')} onClick={() => setScope('todos')}>Todos los tickets</button>
+        </div>
+
+        <input className="search-input" placeholder="Buscar código, título, sala, activo…"
+          value={search} onChange={(e) => setSearch(e.target.value)} style={{ minWidth: 250 }} />
 
         <select className="filter-select" value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)}>
           <option value="">Todos los tipos</option>
@@ -66,8 +114,8 @@ export default function TicketsTab({ tickets, commentCounts, loading, reload }) 
 
         <div className="spacer" />
 
-        <button className="btn btn-danger" disabled={selectedOpen.length === 0} onClick={() => setShowClose(true)}>
-          <IconLock size={16} /> Cerrar ticket{selectedOpen.length > 1 ? 's' : ''}{selectedOpen.length ? ` (${selectedOpen.length})` : ''}
+        <button className="btn" onClick={descargarCSV} disabled={filtered.length === 0} title="Descargar los tickets visibles en CSV">
+          <IconDownload size={16} /> Descargar CSV
         </button>
       </div>
 
@@ -75,9 +123,10 @@ export default function TicketsTab({ tickets, commentCounts, loading, reload }) 
         <table>
           <thead>
             <tr>
-              <th className="cell-check"></th>
+              <th>Código</th>
               <th>Tipo</th>
               <th>Título</th>
+              <th>Descripción</th>
               <th>Sala</th>
               <th>Activo</th>
               <th>Área</th>
@@ -88,21 +137,17 @@ export default function TicketsTab({ tickets, commentCounts, loading, reload }) 
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><td colSpan={10} className="empty">Cargando tickets…</td></tr>}
+            {loading && <tr><td colSpan={11} className="empty">Cargando tickets…</td></tr>}
             {!loading && filtered.length === 0 && (
-              <tr><td colSpan={10} className="empty">No hay tickets que mostrar.</td></tr>
+              <tr><td colSpan={11} className="empty">No hay tickets que mostrar.</td></tr>
             )}
             {!loading && filtered.map((t) => {
               const Ico = TIPO_ICONS[TIPOS.find((x) => x.value === t.tipo_ticket)?.icon] || (() => null)
               const nComments = commentCounts[t.id] || 0
+              const nFiles = attachmentCounts[t.id] || 0
               return (
                 <tr key={t.id}>
-                  <td className="cell-check">
-                    <input type="checkbox"
-                      checked={selected.has(t.id)}
-                      disabled={t.estado === 'cerrado'}
-                      onChange={() => toggleSel(t.id)} />
-                  </td>
+                  <td className="codigo-cell">{t.codigo || '—'}</td>
                   <td>
                     <span className="tipo-badge" style={{ background: tipoColor(t.tipo_ticket) }}>
                       <Ico size={13} /> {tipoLabel(t.tipo_ticket)}
@@ -112,6 +157,7 @@ export default function TicketsTab({ tickets, commentCounts, loading, reload }) 
                     )}
                   </td>
                   <td>{t.titulo}</td>
+                  <td className="desc-cell" title={t.descripcion || ''}>{t.descripcion || '—'}</td>
                   <td>{t.sala || '—'}</td>
                   <td>{t.activo || '—'}</td>
                   <td>{areaLabel(t.area)}</td>
@@ -128,16 +174,21 @@ export default function TicketsTab({ tickets, commentCounts, loading, reload }) 
                         <IconPencil size={16} />
                       </button>
                       <button className="btn-ghost" title="Observaciones" onClick={() => setCommentTicket(t)}>
-                        <span style={{ position: 'relative', display: 'inline-flex' }}>
+                        <CountBadge count={nComments}>
                           <IconNote size={16} className={nComments ? 'icon-note' : ''} />
-                          {nComments > 0 && (
-                            <span style={{
-                              position: 'absolute', top: -6, right: -8, background: '#1d4ed8', color: '#fff',
-                              borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '0 4px', lineHeight: '14px',
-                            }}>{nComments}</span>
-                          )}
-                        </span>
+                        </CountBadge>
                       </button>
+                      <button className="btn-ghost" title="Informes adjuntos" onClick={() => setAttachTicket(t)}>
+                        <CountBadge count={nFiles}>
+                          <IconClip size={16} className={nFiles ? 'icon-clip' : ''} />
+                        </CountBadge>
+                      </button>
+                      {t.estado === 'abierto' && (
+                        <button className="btn-ghost" title="Cerrar ticket" style={{ color: '#dc2626' }}
+                          onClick={() => setCloseTicket(t)}>
+                          <IconLock size={16} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -150,7 +201,8 @@ export default function TicketsTab({ tickets, commentCounts, loading, reload }) 
       {showForm && <TicketForm onClose={() => setShowForm(false)} onSaved={afterSave} />}
       {editTicket && <TicketForm initial={editTicket} onClose={() => setEditTicket(null)} onSaved={afterSave} />}
       {commentTicket && <CommentsModal ticket={commentTicket} onClose={() => setCommentTicket(null)} onChanged={reload} />}
-      {showClose && <CloseTicketModal tickets={selectedOpen} onClose={() => setShowClose(false)} onClosed={afterClose} />}
+      {attachTicket && <AttachmentsModal ticket={attachTicket} onClose={() => setAttachTicket(null)} onChanged={reload} />}
+      {closeTicket && <CloseTicketModal tickets={[closeTicket]} onClose={() => setCloseTicket(null)} onClosed={afterClose} />}
     </div>
   )
 }

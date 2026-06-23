@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { TIPOS, CLASIFICACIONES_INCIDENTE, AREAS, SALAS, ACTIVOS } from '../constants'
+import { TIPOS, CLASIFICACIONES_INCIDENTE, AREAS, SALAS } from '../constants'
 import { TIPO_ICONS, IconX } from './Icons'
 import Combobox from './Combobox'
+import AssetPicker from './AssetPicker'
+import DateTimePicker from './DateTimePicker'
+import { generarCodigo } from '../lib/codigo'
 
 const countWords = (s) => (s.trim() ? s.trim().split(/\s+/).length : 0)
 const MAX_TITULO = 20
@@ -23,7 +26,7 @@ export default function TicketForm({ initial, onClose, onSaved }) {
   const [titulo, setTitulo] = useState(initial?.titulo || '')
   const [descripcion, setDescripcion] = useState(initial?.descripcion || '')
   const [sala, setSala] = useState(initial?.sala || '')
-  const [activo, setActivo] = useState(initial?.activo || '')
+  const [activo, setActivo] = useState({ id: initial?.activo_id || null, nombre: initial?.activo || '' })
   const [area, setArea] = useState(initial?.area || '')
   const [fechaInicio, setFechaInicio] = useState(toLocalInput(initial?.fecha_inicio) || '')
   const [saving, setSaving] = useState(false)
@@ -54,16 +57,19 @@ export default function TicketForm({ initial, onClose, onSaved }) {
       titulo: titulo.trim(),
       descripcion: descripcion.trim() || null,
       sala: sala || null,
-      activo: activo || null,
+      activo: activo?.nombre || null,   // snapshot/historial; el nombre vivo se resuelve al listar
+      activo_id: activo?.id || null,    // vínculo estable con la CMDB
       area: area || null,
       fecha_inicio: new Date(fechaInicio).toISOString(),
     }
 
     let res
     if (editing) {
+      // El código se mantiene estable; no se regenera al editar
       res = await supabase.from('tickets').update(payload).eq('id', initial.id)
     } else {
-      res = await supabase.from('tickets').insert({ ...payload, estado: 'abierto' })
+      const codigo = await generarCodigo(supabase, tipo, payload.fecha_inicio)
+      res = await supabase.from('tickets').insert({ ...payload, estado: 'abierto', codigo })
     }
 
     setSaving(false)
@@ -151,10 +157,10 @@ export default function TicketForm({ initial, onClose, onSaved }) {
             <Combobox options={SALAS} value={sala} onChange={setSala} placeholder="Buscar sala…" />
           </div>
 
-          {/* e. Activo (combobox con búsqueda) */}
+          {/* e. Activo (selector contra la CMDB) */}
           <div className="field">
-            <label>Activo</label>
-            <Combobox options={ACTIVOS} value={activo} onChange={setActivo} placeholder="Buscar activo…" />
+            <label>Activo <span className="hint">(desde la CMDB)</span></label>
+            <AssetPicker value={activo} onChange={setActivo} />
           </div>
 
           {/* f. Área */}
@@ -166,10 +172,10 @@ export default function TicketForm({ initial, onClose, onSaved }) {
             </select>
           </div>
 
-          {/* g. Fecha y hora de inicio (24h via datetime-local) */}
+          {/* g. Fecha y hora de inicio (calendario + hora 24h) */}
           <div className="field">
             <label>Fecha y hora de inicio</label>
-            <input type="datetime-local" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} />
+            <DateTimePicker value={fechaInicio} onChange={setFechaInicio} />
           </div>
 
           {error && <div className="error-text">{error}</div>}

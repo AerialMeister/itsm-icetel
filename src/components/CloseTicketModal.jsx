@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { IconX } from './Icons'
+import DateTimePicker from './DateTimePicker'
 
 // Cierre de uno o varios tickets. Exige fecha y hora de cierre.
 export default function CloseTicketModal({ tickets, onClose, onClosed }) {
@@ -43,7 +44,7 @@ export default function CloseTicketModal({ tickets, onClose, onClosed }) {
           </p>
           <div className="field">
             <label>Fecha y hora de cierre</label>
-            <input type="datetime-local" value={fechaCierre} onChange={(e) => setFechaCierre(e.target.value)} />
+            <DateTimePicker value={fechaCierre} onChange={setFechaCierre} />
           </div>
           {error && <div className="error-text">{error}</div>}
         </div>

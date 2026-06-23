@@ -9,7 +9,8 @@ const currentMonthKey = () => {
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`
 }
 
-const PIE_COLORS = ['#dc2626', '#f59e0b', '#64748b']
+// Orden: Avería, No urgente, Urgente, Crítico
+const PIE_COLORS = ['#64748b', '#f59e0b', '#ef4444', '#7f1d1d']
 
 function Split({ abierto, cerrado }) {
   const total = abierto + cerrado

@@ -7,6 +7,7 @@ export default function App() {
   const [tab, setTab] = useState('tickets')
   const [tickets, setTickets] = useState([])
   const [commentCounts, setCommentCounts] = useState({})
+  const [attachmentCounts, setAttachmentCounts] = useState({})
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
 
@@ -19,13 +20,34 @@ export default function App() {
       .order('fecha_inicio', { ascending: false })
 
     if (error) { setLoadError(error.message); setLoading(false); return }
-    setTickets(tk || [])
+
+    // Resuelve el nombre ACTUAL de los activos vinculados a la CMDB.
+    // Así, si un activo se renombra en la CMDB, el ITSM lo refleja al instante.
+    let lista = tk || []
+    const ids = [...new Set(lista.map((t) => t.activo_id).filter(Boolean))]
+    if (ids.length) {
+      try {
+        const { data: nombres } = await supabase.rpc('cmdb_asset_names', { p_ids: ids })
+        const mapa = {}
+        ;(nombres || []).forEach((n) => { mapa[n.id] = n.nombre })
+        lista = lista.map((t) =>
+          t.activo_id && mapa[t.activo_id] ? { ...t, activo: mapa[t.activo_id] } : t)
+      } catch { /* CMDB no disponible: se usa el nombre guardado (snapshot) */ }
+    }
+    setTickets(lista)
 
     // Conteo de comentarios por ticket (para el ícono de nota)
     const { data: cm } = await supabase.from('ticket_comentarios').select('ticket_id')
     const counts = {}
     ;(cm || []).forEach((c) => { counts[c.ticket_id] = (counts[c.ticket_id] || 0) + 1 })
     setCommentCounts(counts)
+
+    // Conteo de adjuntos por ticket (para el ícono de clip)
+    const { data: ad } = await supabase.from('ticket_adjuntos').select('ticket_id')
+    const aCounts = {}
+    ;(ad || []).forEach((a) => { aCounts[a.ticket_id] = (aCounts[a.ticket_id] || 0) + 1 })
+    setAttachmentCounts(aCounts)
+
     setLoadError('')
     setLoading(false)
   }, [])
@@ -62,7 +84,7 @@ export default function App() {
       )}
 
       {tab === 'tickets'
-        ? <TicketsTab tickets={tickets} commentCounts={commentCounts} loading={loading} reload={reload} />
+        ? <TicketsTab tickets={tickets} commentCounts={commentCounts} attachmentCounts={attachmentCounts} loading={loading} reload={reload} />
         : <StatsTab tickets={tickets} />}
     </>
   )
