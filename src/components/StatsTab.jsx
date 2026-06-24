@@ -132,32 +132,32 @@ export default function StatsTab({ tickets }) {
         </div>
 
         {/* Zonas con más eventos e incidentes */}
-        <div className="panel" style={{ overflow: 'hidden' }}>
+        <div className="panel">
           <h3>Zonas con más eventos e incidentes</h3>
           {s.porZona.length === 0 ? <div className="empty">Sin datos.</div> : (
-            <table className="mini-table" style={{ tableLayout: 'fixed' }}><tbody>
+            <div>
               {s.porZona.slice(0, 8).map((r) => (
-                <tr key={r.name}>
-                  <td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</td>
-                  <td style={{ width: 36, textAlign: 'right', fontWeight: 700 }}>{r.count}</td>
-                </tr>
+                <div key={r.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 4px', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: 12 }}>{r.name}</span>
+                  <span style={{ fontWeight: 700, flexShrink: 0 }}>{r.count}</span>
+                </div>
               ))}
-            </tbody></table>
+            </div>
           )}
         </div>
 
         {/* Activos con más eventos e incidentes */}
-        <div className="panel" style={{ overflow: 'hidden' }}>
+        <div className="panel">
           <h3>Activos con más eventos e incidentes</h3>
           {s.porActivo.length === 0 ? <div className="empty">Sin datos.</div> : (
-            <table className="mini-table" style={{ tableLayout: 'fixed' }}><tbody>
+            <div>
               {s.porActivo.slice(0, 8).map((r) => (
-                <tr key={r.name}>
-                  <td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</td>
-                  <td style={{ width: 36, textAlign: 'right', fontWeight: 700 }}>{r.count}</td>
-                </tr>
+                <div key={r.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 4px', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: 12 }}>{r.name}</span>
+                  <span style={{ fontWeight: 700, flexShrink: 0 }}>{r.count}</span>
+                </div>
               ))}
-            </tbody></table>
+            </div>
           )}
         </div>
 
