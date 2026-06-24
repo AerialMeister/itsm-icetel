@@ -132,24 +132,30 @@ export default function StatsTab({ tickets }) {
         </div>
 
         {/* Zonas con más eventos e incidentes */}
-        <div className="panel">
+        <div className="panel" style={{ overflow: 'hidden' }}>
           <h3>Zonas con más eventos e incidentes</h3>
           {s.porZona.length === 0 ? <div className="empty">Sin datos.</div> : (
             <table className="mini-table"><tbody>
               {s.porZona.slice(0, 8).map((r) => (
-                <tr key={r.name}><td>{r.name}</td><td>{r.count}</td></tr>
+                <tr key={r.name}>
+                  <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</td>
+                  <td style={{ width: 40, textAlign: 'right' }}>{r.count}</td>
+                </tr>
               ))}
             </tbody></table>
           )}
         </div>
 
         {/* Activos con más eventos e incidentes */}
-        <div className="panel">
+        <div className="panel" style={{ overflow: 'hidden' }}>
           <h3>Activos con más eventos e incidentes</h3>
           {s.porActivo.length === 0 ? <div className="empty">Sin datos.</div> : (
             <table className="mini-table"><tbody>
               {s.porActivo.slice(0, 8).map((r) => (
-                <tr key={r.name}><td>{r.name}</td><td>{r.count}</td></tr>
+                <tr key={r.name}>
+                  <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</td>
+                  <td style={{ width: 40, textAlign: 'right' }}>{r.count}</td>
+                </tr>
               ))}
             </tbody></table>
           )}
@@ -158,20 +164,48 @@ export default function StatsTab({ tickets }) {
         {/* Tickets por área y tipo (derivado del sistema del activo) */}
         <div className="panel full">
           <h3>Tickets por área y tipo</h3>
-          {s.porArea.length === 0 ? <div className="empty">Sin datos con sistema asignado en el período.</div> : (
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={s.porArea}>
-                <XAxis dataKey="area" fontSize={12} />
-                <YAxis allowDecimals={false} fontSize={11} />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="evento"     name="Evento"         stackId="a" fill="#2563eb" />
-                <Bar dataKey="incidente"  name="Incidente"      stackId="a" fill="#dc2626" />
-                <Bar dataKey="preventivo" name="M. Preventivo"  stackId="a" fill="#16a34a" />
-                <Bar dataKey="correctivo" name="M. Correctivo"  stackId="a" fill="#eab308" />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
+          {s.porArea.length === 0 ? <div className="empty">Sin datos con sistema asignado en el período.</div> : (() => {
+            // Colores por área — distintos a azul/rojo/verde/amarillo usados por los tipos
+            const AREA_COLORS = ['#7c3aed', '#0891b2', '#be185d', '#b45309', '#0f766e']
+            // Tooltip personalizado que muestra el desglose por tipo
+            const TooltipArea = ({ active, payload, label }) => {
+              if (!active || !payload?.length) return null
+              const d = payload[0]?.payload
+              return (
+                <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 14px', fontSize: 13 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 6 }}>{label}</div>
+                  <div style={{ color: '#2563eb' }}>Evento: {d.evento}</div>
+                  <div style={{ color: '#dc2626' }}>Incidente: {d.incidente}</div>
+                  <div style={{ color: '#16a34a' }}>M. Preventivo: {d.preventivo}</div>
+                  <div style={{ color: '#eab308' }}>M. Correctivo: {d.correctivo}</div>
+                  <div style={{ fontWeight: 700, marginTop: 4 }}>Total: {d.evento + d.incidente + d.preventivo + d.correctivo}</div>
+                </div>
+              )
+            }
+            // Transforma los datos para tener un total por área y asigna color
+            const dataConTotal = s.porArea.map((a, i) => ({
+              ...a,
+              total: a.evento + a.incidente + a.preventivo + a.correctivo,
+              color: AREA_COLORS[i % AREA_COLORS.length],
+            }))
+            return (
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={dataConTotal}>
+                  <XAxis dataKey="area" fontSize={12} />
+                  <YAxis allowDecimals={false} fontSize={11} />
+                  <Tooltip content={<TooltipArea />} />
+                  <Legend
+                    payload={dataConTotal.map((a) => ({ value: a.area, type: 'square', color: a.color }))}
+                  />
+                  <Bar dataKey="total" name="Total" radius={[4, 4, 0, 0]}>
+                    {dataConTotal.map((a, i) => (
+                      <Cell key={a.area} fill={AREA_COLORS[i % AREA_COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )
+          })()}
         </div>
 
         {/* MTBF */}
