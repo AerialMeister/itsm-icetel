@@ -1,4 +1,4 @@
-import { TIPOS, AREAS, CLASIFICACIONES_INCIDENTE } from '../constants'
+import { TIPOS, CLASIFICACIONES_INCIDENTE } from '../constants'
 
 // Clave YYYY-MM en hora local
 export const monthKey = (iso) => {
@@ -35,6 +35,26 @@ export const formatDuration = (ms) => {
 
 const TIPOS_NO_INCIDENTE = ['evento', 'mantenimiento_preventivo', 'mantenimiento_correctivo']
 
+// Mapeo de slug de sistema → área equivalente (para el gráfico "Tickets por área y tipo")
+const SISTEMA_A_AREA = {
+  'electrico':          'Energía',
+  'mecanico':           'Clima',
+  'arquitectonico':     'Servicios generales',
+  'telecomunicaciones': 'Telecomunicaciones',
+}
+
+// Ranking genérico por campo
+const rankBy = (lista, fn) => {
+  const map = {}
+  lista.forEach((t) => {
+    const k = fn(t) || 'Sin información'
+    map[k] = (map[k] || 0) + 1
+  })
+  return Object.entries(map)
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+}
+
 export function computeStats(allTickets, mKey) {
   const tickets = allTickets.filter((t) => monthKey(t.fecha_inicio) === mKey)
 
@@ -44,7 +64,7 @@ export function computeStats(allTickets, mKey) {
     count: tickets.filter((x) => x.tipo_ticket === t.value).length,
   }))
 
-  const incidentes = tickets.filter((t) => t.tipo_ticket === 'incidente')
+  const incidentes   = tickets.filter((t) => t.tipo_ticket === 'incidente')
   const noIncidentes = tickets.filter((t) => TIPOS_NO_INCIDENTE.includes(t.tipo_ticket))
 
   const incidentesEstado = {
@@ -62,32 +82,36 @@ export function computeStats(allTickets, mKey) {
     count: incidentes.filter((t) => t.clasificacion_incidente === c.value).length,
   }))
 
-  // Eventos e incidentes por sala / activo (ranking)
-  const eventosEIncidentes = tickets.filter((t) => t.tipo_ticket === 'evento' || t.tipo_ticket === 'incidente')
-  const rank = (campo) => {
-    const map = {}
-    eventosEIncidentes.forEach((t) => {
-      const k = t[campo] || 'Sin asignar'
-      map[k] = (map[k] || 0) + 1
-    })
-    return Object.entries(map).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count)
-  }
-  const porSala = rank('sala')
-  const porActivo = rank('activo')
+  // Zonas con más eventos e incidentes
+  // Usa ubicacion_activo (viene de la CMDB via la función enriquecida)
+  const eventosEIncidentes = tickets.filter(
+    (t) => t.tipo_ticket === 'evento' || t.tipo_ticket === 'incidente'
+  )
+  const porZona   = rankBy(eventosEIncidentes, (t) => t.ubicacion_activo || '')
+  const porActivo = rankBy(eventosEIncidentes, (t) => t.activo)
 
-  // Por área: conteo de cada tipo
-  const porArea = AREAS.map((a) => {
-    const sub = tickets.filter((t) => t.area === a.value)
+  // Tickets por área derivada del sistema del activo
+  // Agrupa usando SISTEMA_A_AREA; tickets sin sistema van a "Sin sistema"
+  const areasUnicas = [...new Set([
+    ...Object.values(SISTEMA_A_AREA),
+    'Sin sistema',
+  ])]
+
+  const porArea = areasUnicas.map((areaLabel) => {
+    const sub = tickets.filter((t) => {
+      const a = SISTEMA_A_AREA[t.sistema_slug] || 'Sin sistema'
+      return a === areaLabel
+    })
     return {
-      area: a.label,
-      evento: sub.filter((t) => t.tipo_ticket === 'evento').length,
-      incidente: sub.filter((t) => t.tipo_ticket === 'incidente').length,
+      area:       areaLabel,
+      evento:     sub.filter((t) => t.tipo_ticket === 'evento').length,
+      incidente:  sub.filter((t) => t.tipo_ticket === 'incidente').length,
       preventivo: sub.filter((t) => t.tipo_ticket === 'mantenimiento_preventivo').length,
       correctivo: sub.filter((t) => t.tipo_ticket === 'mantenimiento_correctivo').length,
     }
-  })
+  }).filter((a) => (a.evento + a.incidente + a.preventivo + a.correctivo) > 0)
 
-  // MTTR: promedio (cierre - inicio) de incidentes cerrados del mes
+  // MTTR
   const incidentesCerrados = incidentes.filter((t) => t.estado === 'cerrado' && t.fecha_cierre)
   let mttrMs = null
   if (incidentesCerrados.length > 0) {
@@ -96,7 +120,7 @@ export function computeStats(allTickets, mKey) {
     mttrMs = total / incidentesCerrados.length
   }
 
-  // MTBF: activos con más de un incidente en el mes
+  // MTBF
   const porActivoInc = {}
   incidentes.forEach((t) => {
     const k = t.activo || 'Sin asignar'
@@ -110,12 +134,11 @@ export function computeStats(allTickets, mKey) {
       for (let i = 1; i < sorted.length; i++) {
         totalGap += new Date(sorted[i].fecha_inicio) - new Date(sorted[i - 1].fecha_inicio)
       }
-      const gaps = sorted.length - 1
-      return { activo, incidentes: arr.length, mtbfMs: totalGap / gaps }
+      return { activo, incidentes: arr.length, mtbfMs: totalGap / (sorted.length - 1) }
     })
     .sort((a, b) => b.incidentes - a.incidentes)
 
-  // Tickets generados por día del mes
+  // Tickets por día del mes
   const [yy, mm] = mKey.split('-').map(Number)
   const diasMes = new Date(yy, mm, 0).getDate()
   const porDia = Array.from({ length: diasMes }, (_, i) => ({ dia: String(i + 1), count: 0 }))
@@ -131,7 +154,7 @@ export function computeStats(allTickets, mKey) {
     incidentesEstado,
     noIncidentesEstado,
     porClasificacion,
-    porSala,
+    porZona,
     porActivo,
     porArea,
     mttrMs,

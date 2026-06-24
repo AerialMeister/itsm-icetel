@@ -14,35 +14,21 @@ export default function App() {
   const reload = useCallback(async () => {
     if (!supabaseConfigured) { setLoading(false); return }
     setLoading(true)
-    const { data: tk, error } = await supabase
-      .from('tickets')
-      .select('*')
-      .order('fecha_inicio', { ascending: false })
+
+    // Usa la función enriquecida que incluye sistema y ubicación del activo
+    const { data: tk, error } = await supabase.rpc('itsm_tickets_enriquecidos')
 
     if (error) { setLoadError(error.message); setLoading(false); return }
 
-    // Resuelve el nombre ACTUAL de los activos vinculados a la CMDB.
-    // Así, si un activo se renombra en la CMDB, el ITSM lo refleja al instante.
-    let lista = tk || []
-    const ids = [...new Set(lista.map((t) => t.activo_id).filter(Boolean))]
-    if (ids.length) {
-      try {
-        const { data: nombres } = await supabase.rpc('cmdb_asset_names', { p_ids: ids })
-        const mapa = {}
-        ;(nombres || []).forEach((n) => { mapa[n.id] = n.nombre })
-        lista = lista.map((t) =>
-          t.activo_id && mapa[t.activo_id] ? { ...t, activo: mapa[t.activo_id] } : t)
-      } catch { /* CMDB no disponible: se usa el nombre guardado (snapshot) */ }
-    }
-    setTickets(lista)
+    setTickets(tk || [])
 
-    // Conteo de comentarios por ticket (para el ícono de nota)
+    // Conteo de comentarios por ticket
     const { data: cm } = await supabase.from('ticket_comentarios').select('ticket_id')
     const counts = {}
     ;(cm || []).forEach((c) => { counts[c.ticket_id] = (counts[c.ticket_id] || 0) + 1 })
     setCommentCounts(counts)
 
-    // Conteo de adjuntos por ticket (para el ícono de clip)
+    // Conteo de adjuntos por ticket
     const { data: ad } = await supabase.from('ticket_adjuntos').select('ticket_id')
     const aCounts = {}
     ;(ad || []).forEach((a) => { aCounts[a.ticket_id] = (aCounts[a.ticket_id] || 0) + 1 })
