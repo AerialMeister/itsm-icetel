@@ -138,8 +138,8 @@ export default function StatsTab({ tickets }) {
             <table className="mini-table"><tbody>
               {s.porZona.slice(0, 8).map((r) => (
                 <tr key={r.name}>
-                  <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</td>
-                  <td style={{ width: 40, textAlign: 'right' }}>{r.count}</td>
+                  <td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 0, width: '100%' }}>{r.name}</td>
+                  <td style={{ whiteSpace: 'nowrap', paddingLeft: 12, fontWeight: 700 }}>{r.count}</td>
                 </tr>
               ))}
             </tbody></table>
@@ -153,8 +153,8 @@ export default function StatsTab({ tickets }) {
             <table className="mini-table"><tbody>
               {s.porActivo.slice(0, 8).map((r) => (
                 <tr key={r.name}>
-                  <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</td>
-                  <td style={{ width: 40, textAlign: 'right' }}>{r.count}</td>
+                  <td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 0, width: '100%' }}>{r.name}</td>
+                  <td style={{ whiteSpace: 'nowrap', paddingLeft: 12, fontWeight: 700 }}>{r.count}</td>
                 </tr>
               ))}
             </tbody></table>
