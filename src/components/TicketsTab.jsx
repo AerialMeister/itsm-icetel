@@ -1,15 +1,16 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
+import * as XLSX from 'xlsx'
 import { TIPOS, tipoLabel, tipoColor, clasifLabel } from '../constants'
 import { TIPO_ICONS, IconPencil, IconNote, IconPlus, IconLock, IconClip, IconDownload, IconAlertClock } from './Icons'
+import { supabase } from '../supabaseClient'
 import TicketForm from './TicketForm'
 import CommentsModal from './CommentsModal'
 import CloseTicketModal from './CloseTicketModal'
 import AttachmentsModal from './AttachmentsModal'
 
 const fmt = (iso) => (iso ? new Date(iso).toLocaleString('es-CL', { hour12: false, dateStyle: 'short', timeStyle: 'short' }) : '—')
+const fmtFull = (iso) => (iso ? new Date(iso).toLocaleString('es-CL', { hour12: false }) : '')
 
-// Devuelve true si el ticket está abierto y han pasado más de 60 min
-// desde su creación o desde el último comentario (updated_at lo refleja via trigger)
 const estaVencido = (ticket) => {
   if (ticket.estado !== 'abierto') return false
   const HORA_MS = 60 * 60 * 1000
@@ -17,7 +18,6 @@ const estaVencido = (ticket) => {
   return (Date.now() - ref) > HORA_MS
 }
 
-// Pequeño badge con contador reutilizable (observaciones / adjuntos)
 function CountBadge({ children, count }) {
   return (
     <span style={{ position: 'relative', display: 'inline-flex' }}>
@@ -32,7 +32,38 @@ function CountBadge({ children, count }) {
   )
 }
 
-export default function TicketsTab({ tickets, commentCounts, attachmentCounts, loading, reload }) {
+// Modal de confirmación de importación
+function ImportConfirmModal({ file, onConfirm, onCancel, loading }) {
+  return (
+    <div className="modal-overlay">
+      <div className="modal modal-sm">
+        <div className="modal-head">
+          <h3>⚠️ Confirmar importación</h3>
+        </div>
+        <div className="modal-body">
+          <p style={{ margin: 0, lineHeight: 1.6 }}>
+            Estás a punto de importar el archivo <b>{file?.name}</b> a la base de datos.
+          </p>
+          <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '12px 14px', marginTop: 12, fontSize: 13, color: '#92400e' }}>
+            <b>Advertencia:</b> Esta operación ingresará y/o sobreescribirá datos en la base de datos. Los tickets existentes con el mismo código serán actualizados. Los tickets nuevos serán insertados. Esta acción no se puede deshacer fácilmente.
+          </div>
+          <p style={{ margin: '12px 0 0', fontSize: 13, color: '#64748b' }}>
+            ¿Deseas continuar?
+          </p>
+        </div>
+        <div className="modal-foot">
+          <button className="btn" onClick={onCancel} disabled={loading}>Cancelar</button>
+          <button className="btn btn-primary" onClick={onConfirm} disabled={loading}
+            style={{ background: '#dc2626', borderColor: '#dc2626' }}>
+            {loading ? 'Importando…' : 'Sí, importar datos'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function TicketsTab({ tickets, commentCounts, attachmentCounts, loading, reload, perfil }) {
   const [showForm, setShowForm] = useState(false)
   const [editTicket, setEditTicket] = useState(null)
   const [commentTicket, setCommentTicket] = useState(null)
@@ -42,7 +73,15 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
   const [search, setSearch] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
-  const [scope, setScope] = useState('todos') // 'todos' | 'hoy'
+  const [filtroFechaDesde, setFiltroFechaDesde] = useState('')
+  const [filtroFechaHasta, setFiltroFechaHasta] = useState('')
+  const [scope, setScope] = useState('todos')
+
+  // Importación
+  const fileInputRef = useRef(null)
+  const [importFile, setImportFile] = useState(null)
+  const [importLoading, setImportLoading] = useState(false)
+  const [importMsg, setImportMsg] = useState('')
 
   const esHoy = (iso) => {
     if (!iso) return false
@@ -55,6 +94,15 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
       if (scope === 'hoy' && !esHoy(t.fecha_inicio)) return false
       if (filtroTipo && t.tipo_ticket !== filtroTipo) return false
       if (filtroEstado && t.estado !== filtroEstado) return false
+      if (filtroFechaDesde) {
+        const desde = new Date(filtroFechaDesde)
+        if (new Date(t.fecha_inicio) < desde) return false
+      }
+      if (filtroFechaHasta) {
+        const hasta = new Date(filtroFechaHasta)
+        hasta.setHours(23, 59, 59)
+        if (new Date(t.fecha_inicio) > hasta) return false
+      }
       if (search) {
         const s = search.toLowerCase()
         const hay = [t.codigo, t.titulo, t.descripcion, t.activo].filter(Boolean).join(' ').toLowerCase()
@@ -62,15 +110,19 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
       }
       return true
     })
-  }, [tickets, search, filtroTipo, filtroEstado, scope])
+  }, [tickets, search, filtroTipo, filtroEstado, filtroFechaDesde, filtroFechaHasta, scope])
 
   const afterSave = () => { setShowForm(false); setEditTicket(null); reload() }
   const afterClose = () => { setCloseTicket(null); reload() }
 
-  // Exporta los tickets visibles (con filtros aplicados) a CSV compatible con Excel
-  const descargarCSV = () => {
-    const headers = ['Código', 'Tipo', 'Clasificación', 'Título', 'Descripción', 'Activo', 'Inicio', 'Cierre', 'Estado']
-    const cell = (iso) => (iso ? new Date(iso).toLocaleString('es-CL', { hour12: false }) : '')
+  // ── Descarga XLSX formateada ──
+  const descargarXLSX = () => {
+    const AZUL_OSCURO = '0F3D6B'
+    const AZUL_MEDIO  = '1D4ED8'
+    const GRIS_CLARO  = 'F1F5F9'
+    const BLANCO      = 'FFFFFF'
+
+    const headers = ['Código', 'Tipo', 'Clasificación', 'Título', 'Descripción', 'Activo', 'Sistema', 'Ubicación', 'Registrado por', 'Inicio', 'Cierre', 'Estado']
     const rows = filtered.map((t) => [
       t.codigo || '',
       tipoLabel(t.tipo_ticket),
@@ -78,19 +130,170 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
       t.titulo || '',
       t.descripcion || '',
       t.activo || '',
-      cell(t.fecha_inicio),
-      cell(t.fecha_cierre),
+      t.sistema || '',
+      t.ubicacion_activo || '',
+      t.registrado_por_nombre || '',
+      fmtFull(t.fecha_inicio),
+      fmtFull(t.fecha_cierre),
       t.estado === 'abierto' ? 'Abierto' : 'Cerrado',
     ])
-    const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"'
-    const csv = [headers, ...rows].map((r) => r.map(esc).join(';')).join('\r\n')
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `tickets_icetel_${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
+
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
+
+    // Anchos de columna
+    ws['!cols'] = [
+      { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 30 }, { wch: 40 },
+      { wch: 20 }, { wch: 20 }, { wch: 25 }, { wch: 22 }, { wch: 18 }, { wch: 18 }, { wch: 10 },
+    ]
+
+    // Estilo encabezado
+    const headerStyle = {
+      font: { bold: true, color: { rgb: BLANCO }, name: 'Arial', sz: 11 },
+      fill: { fgColor: { rgb: AZUL_OSCURO }, patternType: 'solid' },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      border: {
+        top:    { style: 'thin', color: { rgb: BLANCO } },
+        bottom: { style: 'thin', color: { rgb: BLANCO } },
+        left:   { style: 'thin', color: { rgb: BLANCO } },
+        right:  { style: 'thin', color: { rgb: BLANCO } },
+      },
+    }
+
+    headers.forEach((_, ci) => {
+      const cell = XLSX.utils.encode_cell({ r: 0, c: ci })
+      if (ws[cell]) ws[cell].s = headerStyle
+    })
+
+    // Estilo filas alternas
+    rows.forEach((row, ri) => {
+      const esPar = ri % 2 === 0
+      row.forEach((_, ci) => {
+        const cell = XLSX.utils.encode_cell({ r: ri + 1, c: ci })
+        if (!ws[cell]) return
+
+        // Color especial para Estado (última columna)
+        const esEstado = ci === headers.length - 1
+        const val = ws[cell].v
+        let fontColor = '0F172A'
+        if (esEstado && val === 'Abierto')  fontColor = 'EA580C'
+        if (esEstado && val === 'Cerrado')  fontColor = '16A34A'
+
+        ws[cell].s = {
+          font: { name: 'Arial', sz: 10, bold: esEstado, color: { rgb: fontColor } },
+          fill: { fgColor: { rgb: esPar ? GRIS_CLARO : BLANCO }, patternType: 'solid' },
+          alignment: { vertical: 'center', wrapText: ci === 4 },
+          border: {
+            top:    { style: 'hair', color: { rgb: 'E2E8F0' } },
+            bottom: { style: 'hair', color: { rgb: 'E2E8F0' } },
+            left:   { style: 'hair', color: { rgb: 'E2E8F0' } },
+            right:  { style: 'hair', color: { rgb: 'E2E8F0' } },
+          },
+        }
+      })
+    })
+
+    // Fila de totales
+    const totalRow = ri => ri + rows.length + 1
+    const totalesData = [`Total: ${rows.length} ticket(s)`, '', '', '', '', '', '', '', '', '', '', '']
+    XLSX.utils.sheet_add_aoa(ws, [totalesData], { origin: { r: rows.length + 1, c: 0 } })
+    const totalCell = XLSX.utils.encode_cell({ r: rows.length + 1, c: 0 })
+    if (ws[totalCell]) ws[totalCell].s = {
+      font: { bold: true, name: 'Arial', sz: 10, color: { rgb: AZUL_MEDIO } },
+      fill: { fgColor: { rgb: 'EFF6FF' }, patternType: 'solid' },
+    }
+
+    // Altura de fila encabezado
+    ws['!rows'] = [{ hpt: 30 }]
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Tickets DCSM')
+    XLSX.writeFile(wb, `tickets_dcsm_${new Date().toISOString().slice(0, 10)}.xlsx`)
+  }
+
+  // ── Importación XLSX ──
+  const onFileSelected = (e) => {
+    const f = e.target.files[0]
+    if (!f) return
+    setImportFile(f)
+    setImportMsg('')
+    e.target.value = ''
+  }
+
+  const ejecutarImport = async () => {
+    if (!importFile) return
+    setImportLoading(true)
+    setImportMsg('')
+
+    try {
+      const buf = await importFile.arrayBuffer()
+      const wb  = XLSX.read(buf, { type: 'array' })
+      const ws  = wb.Sheets[wb.SheetNames[0]]
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1 })
+
+      // Detectar fila de encabezado
+      const headerRow = rows[0]
+      const codigoIdx = headerRow.findIndex(h => String(h).toLowerCase().includes('código') || String(h).toLowerCase().includes('codigo'))
+      if (codigoIdx === -1) throw new Error('No se encontró columna "Código" en el archivo.')
+
+      const tipoIdx    = headerRow.findIndex(h => String(h).toLowerCase() === 'tipo')
+      const clasifIdx  = headerRow.findIndex(h => String(h).toLowerCase().includes('clasificación') || String(h).toLowerCase().includes('clasificacion'))
+      const tituloIdx  = headerRow.findIndex(h => String(h).toLowerCase() === 'título' || String(h).toLowerCase() === 'titulo')
+      const descIdx    = headerRow.findIndex(h => String(h).toLowerCase().includes('descripción') || String(h).toLowerCase().includes('descripcion'))
+      const activoIdx  = headerRow.findIndex(h => String(h).toLowerCase() === 'activo')
+      const regIdx     = headerRow.findIndex(h => String(h).toLowerCase().includes('registrado'))
+      const inicioIdx  = headerRow.findIndex(h => String(h).toLowerCase() === 'inicio')
+      const cierreIdx  = headerRow.findIndex(h => String(h).toLowerCase() === 'cierre')
+      const estadoIdx  = headerRow.findIndex(h => String(h).toLowerCase() === 'estado')
+
+      // Invertir mapa de labels a values
+      const TIPO_VALUES = { 'Incidente': 'incidente', 'Evento': 'evento', 'M. Preventivo': 'mantenimiento_preventivo', 'Mantenimiento preventivo': 'mantenimiento_preventivo', 'M. Correctivo': 'mantenimiento_correctivo', 'Mantenimiento correctivo': 'mantenimiento_correctivo' }
+      const ESTADO_VALUES = { 'Abierto': 'abierto', 'Cerrado': 'cerrado' }
+
+      const dataRows = rows.slice(1).filter(r => r[codigoIdx] && String(r[codigoIdx]).trim())
+
+      let insertados = 0
+      let actualizados = 0
+      let errores = 0
+
+      for (const row of dataRows) {
+        const codigo = String(row[codigoIdx]).trim()
+        if (!codigo || codigo.startsWith('Total:')) continue
+
+        const payload = {
+          codigo,
+          tipo_ticket:             TIPO_VALUES[row[tipoIdx]] || 'evento',
+          clasificacion_incidente: row[clasifIdx] ? row[clasifIdx] : null,
+          titulo:                  row[tituloIdx] || '',
+          descripcion:             row[descIdx] || null,
+          activo:                  row[activoIdx] || null,
+          registrado_por_nombre:   row[regIdx] || null,
+          fecha_inicio:            row[inicioIdx] ? new Date(row[inicioIdx]).toISOString() : null,
+          fecha_cierre:            row[cierreIdx] ? new Date(row[cierreIdx]).toISOString() : null,
+          estado:                  ESTADO_VALUES[row[estadoIdx]] || 'abierto',
+        }
+
+        // Verificar si existe por código
+        const { data: existe } = await supabase.from('tickets').select('id').eq('codigo', codigo).maybeSingle()
+
+        if (existe) {
+          const { error } = await supabase.from('tickets').update(payload).eq('id', existe.id)
+          if (error) errores++
+          else actualizados++
+        } else {
+          const { error } = await supabase.from('tickets').insert(payload)
+          if (error) errores++
+          else insertados++
+        }
+      }
+
+      setImportFile(null)
+      setImportMsg(`✅ Importación completada: ${insertados} insertado(s), ${actualizados} actualizado(s)${errores ? `, ${errores} error(es)` : ''}.`)
+      reload()
+    } catch (err) {
+      setImportMsg(`❌ Error: ${err.message}`)
+    }
+
+    setImportLoading(false)
   }
 
   return (
@@ -102,11 +305,11 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
 
         <div className="seg">
           <button className={'seg-btn' + (scope === 'hoy' ? ' active' : '')} onClick={() => setScope('hoy')}>Hoy</button>
-          <button className={'seg-btn' + (scope === 'todos' ? ' active' : '')} onClick={() => setScope('todos')}>Todos los tickets</button>
+          <button className={'seg-btn' + (scope === 'todos' ? ' active' : '')} onClick={() => setScope('todos')}>Todos</button>
         </div>
 
         <input className="search-input" placeholder="Buscar código, título, activo…"
-          value={search} onChange={(e) => setSearch(e.target.value)} style={{ minWidth: 250 }} />
+          value={search} onChange={(e) => setSearch(e.target.value)} style={{ minWidth: 200 }} />
 
         <select className="filter-select" value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)}>
           <option value="">Todos los tipos</option>
@@ -119,12 +322,44 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
           <option value="cerrado">Cerrado</option>
         </select>
 
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 13, color: 'var(--muted)', whiteSpace: 'nowrap' }}>Desde</span>
+          <input type="date" className="filter-select" value={filtroFechaDesde}
+            onChange={(e) => setFiltroFechaDesde(e.target.value)} />
+          <span style={{ fontSize: 13, color: 'var(--muted)', whiteSpace: 'nowrap' }}>Hasta</span>
+          <input type="date" className="filter-select" value={filtroFechaHasta}
+            onChange={(e) => setFiltroFechaHasta(e.target.value)} />
+          {(filtroFechaDesde || filtroFechaHasta) && (
+            <button className="btn-ghost" style={{ fontSize: 12, color: 'var(--muted)' }}
+              onClick={() => { setFiltroFechaDesde(''); setFiltroFechaHasta('') }}>✕</button>
+          )}
+        </div>
+
         <div className="spacer" />
 
-        <button className="btn" onClick={descargarCSV} disabled={filtered.length === 0} title="Descargar los tickets visibles en CSV">
-          <IconDownload size={16} /> Descargar CSV
+        <button className="btn" onClick={descargarXLSX} disabled={filtered.length === 0}
+          title="Descargar tickets visibles como Excel (.xlsx)">
+          <IconDownload size={16} /> Descargar Excel
+        </button>
+
+        <input ref={fileInputRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }}
+          onChange={onFileSelected} />
+        <button className="btn" onClick={() => fileInputRef.current?.click()}
+          title="Importar tickets desde Excel (.xlsx)">
+          ↑ Importar Excel
         </button>
       </div>
+
+      {importMsg && (
+        <div style={{
+          margin: '0 0 12px', padding: '10px 16px', borderRadius: 8, fontSize: 13,
+          background: importMsg.startsWith('✅') ? '#f0fdf4' : '#fef2f2',
+          border: `1px solid ${importMsg.startsWith('✅') ? '#bbf7d0' : '#fecaca'}`,
+          color: importMsg.startsWith('✅') ? '#166534' : '#b91c1c',
+        }}>
+          {importMsg}
+        </div>
+      )}
 
       <div className="table-wrap">
         <table>
@@ -194,10 +429,8 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
                         </button>
                       )}
                       {vencido && (
-                        <span
-                          title="Ticket abierto hace más de 1 hora sin actividad"
-                          style={{ color: '#f59e0b', display: 'inline-flex', alignItems: 'center' }}
-                        >
+                        <span title="Ticket abierto hace más de 1 hora sin actividad"
+                          style={{ color: '#f59e0b', display: 'inline-flex', alignItems: 'center' }}>
                           <IconAlertClock size={16} />
                         </span>
                       )}
@@ -215,6 +448,14 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
       {commentTicket && <CommentsModal ticket={commentTicket} onClose={() => setCommentTicket(null)} onChanged={reload} />}
       {attachTicket && <AttachmentsModal ticket={attachTicket} onClose={() => setAttachTicket(null)} onChanged={reload} />}
       {closeTicket && <CloseTicketModal tickets={[closeTicket]} onClose={() => setCloseTicket(null)} onClosed={afterClose} />}
+      {importFile && (
+        <ImportConfirmModal
+          file={importFile}
+          onConfirm={ejecutarImport}
+          onCancel={() => { setImportFile(null) }}
+          loading={importLoading}
+        />
+      )}
     </div>
   )
 }
