@@ -1,17 +1,24 @@
 import { createClient } from '@supabase/supabase-js'
 
-const url = import.meta.env.VITE_SUPABASE_URL
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+// Cliente ITSM (base de datos de tickets y CMDB)
+const itsmUrl    = import.meta.env.VITE_SUPABASE_URL
+const itsmAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-// Aviso claro en consola si faltan las variables de entorno
-if (!url || !anonKey) {
-  console.error(
-    '[ITSM Icetel] Faltan VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY. ' +
-    'Crea un archivo .env (ver .env.example) con los datos de tu proyecto Supabase.'
-  )
+if (!itsmUrl || !itsmAnonKey) {
+  console.error('[ITSM] Faltan VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY en .env')
 }
 
-export const supabase = createClient(url || 'http://localhost', anonKey || 'public-anon-key')
+export const supabase = createClient(itsmUrl || 'http://localhost', itsmAnonKey || 'public-anon-key')
+export const supabaseConfigured = Boolean(itsmUrl && itsmAnonKey)
 
-// true cuando hay credenciales configuradas
-export const supabaseConfigured = Boolean(url && anonKey)
+// Cliente DCSM (base de datos de autenticación compartida con horas-extra)
+const dcsmUrl    = import.meta.env.VITE_DCSM_SUPABASE_URL
+const dcsmAnonKey = import.meta.env.VITE_DCSM_SUPABASE_ANON_KEY
+
+if (!dcsmUrl || !dcsmAnonKey) {
+  console.error('[DCSM] Faltan VITE_DCSM_SUPABASE_URL o VITE_DCSM_SUPABASE_ANON_KEY en .env')
+}
+
+export const sbDcsm = createClient(dcsmUrl || 'http://localhost', dcsmAnonKey || 'public-anon-key', {
+  auth: { storageKey: 'dcsm-itsm-auth' }
+})
