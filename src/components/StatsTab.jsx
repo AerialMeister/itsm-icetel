@@ -9,7 +9,6 @@ const currentMonthKey = () => {
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`
 }
 
-// Orden: Avería, No urgente, Urgente, Crítico
 const PIE_COLORS = ['#64748b', '#f59e0b', '#ef4444', '#7f1d1d']
 
 function Split({ abierto, cerrado }) {
@@ -132,12 +131,12 @@ export default function StatsTab({ tickets }) {
           <Split abierto={s.noIncidentesEstado.abierto} cerrado={s.noIncidentesEstado.cerrado} />
         </div>
 
-        {/* Salas con más eventos e incidentes */}
+        {/* Zonas con más eventos e incidentes */}
         <div className="panel">
-          <h3>Salas con más eventos e incidentes</h3>
-          {s.porSala.length === 0 ? <div className="empty">Sin datos.</div> : (
+          <h3>Zonas con más eventos e incidentes</h3>
+          {s.porZona.length === 0 ? <div className="empty">Sin datos.</div> : (
             <table className="mini-table"><tbody>
-              {s.porSala.slice(0, 8).map((r) => (
+              {s.porZona.slice(0, 8).map((r) => (
                 <tr key={r.name}><td>{r.name}</td><td>{r.count}</td></tr>
               ))}
             </tbody></table>
@@ -156,21 +155,23 @@ export default function StatsTab({ tickets }) {
           )}
         </div>
 
-        {/* Por área */}
+        {/* Tickets por área y tipo (derivado del sistema del activo) */}
         <div className="panel full">
           <h3>Tickets por área y tipo</h3>
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={s.porArea}>
-              <XAxis dataKey="area" fontSize={12} />
-              <YAxis allowDecimals={false} fontSize={11} />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="evento" name="Evento" stackId="a" fill="#2563eb" />
-              <Bar dataKey="incidente" name="Incidente" stackId="a" fill="#dc2626" />
-              <Bar dataKey="preventivo" name="M. Preventivo" stackId="a" fill="#16a34a" />
-              <Bar dataKey="correctivo" name="M. Correctivo" stackId="a" fill="#eab308" />
-            </BarChart>
-          </ResponsiveContainer>
+          {s.porArea.length === 0 ? <div className="empty">Sin datos con sistema asignado en el período.</div> : (
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={s.porArea}>
+                <XAxis dataKey="area" fontSize={12} />
+                <YAxis allowDecimals={false} fontSize={11} />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="evento"     name="Evento"         stackId="a" fill="#2563eb" />
+                <Bar dataKey="incidente"  name="Incidente"      stackId="a" fill="#dc2626" />
+                <Bar dataKey="preventivo" name="M. Preventivo"  stackId="a" fill="#16a34a" />
+                <Bar dataKey="correctivo" name="M. Correctivo"  stackId="a" fill="#eab308" />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         {/* MTBF */}
