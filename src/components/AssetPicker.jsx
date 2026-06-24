@@ -4,8 +4,9 @@ import { supabase } from '../supabaseClient'
 // Selector de activos contra la CMDB (función RPC cmdb_buscar_activos).
 // - value: { id, nombre }  (id null => texto libre en 'nombre')
 // - onChange({ id, nombre })
-// Permite alternar a "texto libre" para tickets sin activo registrado.
-export default function AssetPicker({ value, onChange, placeholder = 'Buscar activo en la CMDB…' }) {
+// - systemName: nombre del sistema seleccionado para filtrar (ej: 'Sistema Eléctrico')
+// - tipoName: nombre del tipo/grupo seleccionado para filtrar (ej: 'UPS')
+export default function AssetPicker({ value, onChange, systemName, tipoName, placeholder = 'Buscar activo en la CMDB…' }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
@@ -19,7 +20,6 @@ export default function AssetPicker({ value, onChange, placeholder = 'Buscar act
     return () => document.removeEventListener('mousedown', onClick)
   }, [])
 
-  // Búsqueda con debounce contra la CMDB
   useEffect(() => {
     if (!open || freeText) return
     let cancel = false
@@ -27,11 +27,20 @@ export default function AssetPicker({ value, onChange, placeholder = 'Buscar act
     const h = setTimeout(async () => {
       const { data, error } = await supabase.rpc('cmdb_buscar_activos', { p_query: query.trim() })
       if (cancel) return
-      setResults(error ? [] : (data || []))
+      let filtered = error ? [] : (data || [])
+      // Filtra por sistema si está seleccionado
+      if (systemName && filtered.length) {
+        filtered = filtered.filter((a) => a.sistema === systemName)
+      }
+      // Filtra por tipo/grupo si está seleccionado
+      if (tipoName && filtered.length) {
+        filtered = filtered.filter((a) => a.tipo === tipoName)
+      }
+      setResults(filtered)
       setLoading(false)
     }, 220)
     return () => { cancel = true; clearTimeout(h) }
-  }, [query, open, freeText])
+  }, [query, open, freeText, systemName, tipoName])
 
   const pick = (a) => { onChange({ id: a.id, nombre: a.nombre }); setOpen(false); setQuery('') }
   const clear = () => onChange({ id: null, nombre: '' })

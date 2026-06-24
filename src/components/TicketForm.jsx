@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
-import { TIPOS, CLASIFICACIONES_INCIDENTE, AREAS, SALAS } from '../constants'
+import { TIPOS, CLASIFICACIONES_INCIDENTE } from '../constants'
 import { TIPO_ICONS, IconX } from './Icons'
-import Combobox from './Combobox'
+import { IconRayo, IconClima, IconEdificio, IconSistema } from './SystemIcons'
 import AssetPicker from './AssetPicker'
 import DateTimePicker from './DateTimePicker'
 import { generarCodigo } from '../lib/codigo'
@@ -11,7 +11,6 @@ const countWords = (s) => (s.trim() ? s.trim().split(/\s+/).length : 0)
 const MAX_TITULO = 20
 const MAX_DESC = 100
 
-// Convierte un timestamp ISO a valor para <input datetime-local> (sin zona)
 const toLocalInput = (iso) => {
   if (!iso) return ''
   const d = new Date(iso)
@@ -19,21 +18,54 @@ const toLocalInput = (iso) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+// Mapa de íconos por clave de ícono del sistema (igual que la CMDB)
+const SYSTEM_ICONS = {
+  rayo:     IconRayo,
+  clima:    IconClima,
+  edificio: IconEdificio,
+  sistema:  IconSistema,
+}
+
 export default function TicketForm({ initial, onClose, onSaved }) {
   const editing = Boolean(initial)
-  const [tipo, setTipo] = useState(initial?.tipo_ticket || '')
-  const [clasif, setClasif] = useState(initial?.clasificacion_incidente || '')
-  const [titulo, setTitulo] = useState(initial?.titulo || '')
-  const [descripcion, setDescripcion] = useState(initial?.descripcion || '')
-  const [sala, setSala] = useState(initial?.sala || '')
-  const [activo, setActivo] = useState({ id: initial?.activo_id || null, nombre: initial?.activo || '' })
-  const [area, setArea] = useState(initial?.area || '')
-  const [fechaInicio, setFechaInicio] = useState(toLocalInput(initial?.fecha_inicio) || '')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
+
+  const [tipo, setTipo]           = useState(initial?.tipo_ticket || '')
+  const [clasif, setClasif]       = useState(initial?.clasificacion_incidente || '')
+  const [titulo, setTitulo]       = useState(initial?.titulo || '')
+  const [descripcion, setDesc]    = useState(initial?.descripcion || '')
+  const [activo, setActivo]       = useState({ id: initial?.activo_id || null, nombre: initial?.activo || '' })
+  const [fechaInicio, setFecha]   = useState(toLocalInput(initial?.fecha_inicio) || '')
+  const [saving, setSaving]       = useState(false)
+  const [error, setError]         = useState('')
+
+  // Filtros de sistema y grupo
+  const [sistemas, setSistemas]           = useState([])
+  const [selectedSistema, setSelSistema]  = useState(null)   // { id, name, slug, icon }
+  const [grupos, setGrupos]               = useState([])
+  const [selectedGrupo, setSelGrupo]      = useState(null)   // { id, name, slug }
 
   const tituloWords = countWords(titulo)
-  const descWords = countWords(descripcion)
+  const descWords   = countWords(descripcion)
+
+  // Carga sistemas al montar
+  useEffect(() => {
+    supabase.rpc('cmdb_listar_sistemas')
+      .then(({ data }) => setSistemas(data || []))
+  }, [])
+
+  // Al cambiar sistema: carga grupos y resetea grupo + activo
+  useEffect(() => {
+    if (!selectedSistema) { setGrupos([]); setSelGrupo(null); return }
+    supabase.rpc('cmdb_listar_tipos', { p_system_id: selectedSistema.id })
+      .then(({ data }) => setGrupos(data || []))
+    setSelGrupo(null)
+    setActivo({ id: null, nombre: '' })
+  }, [selectedSistema])
+
+  // Al cambiar grupo: resetea activo
+  useEffect(() => {
+    setActivo({ id: null, nombre: '' })
+  }, [selectedGrupo])
 
   const validar = () => {
     if (!tipo) return 'Selecciona el tipo de ticket.'
@@ -52,20 +84,19 @@ export default function TicketForm({ initial, onClose, onSaved }) {
     setSaving(true)
 
     const payload = {
-      tipo_ticket: tipo,
+      tipo_ticket:             tipo,
       clasificacion_incidente: tipo === 'incidente' ? clasif : null,
-      titulo: titulo.trim(),
-      descripcion: descripcion.trim() || null,
-      sala: sala || null,
-      activo: activo?.nombre || null,   // snapshot/historial; el nombre vivo se resuelve al listar
-      activo_id: activo?.id || null,    // vínculo estable con la CMDB
-      area: area || null,
-      fecha_inicio: new Date(fechaInicio).toISOString(),
+      titulo:                  titulo.trim(),
+      descripcion:             descripcion.trim() || null,
+      sala:                    null,
+      activo:                  activo?.nombre || null,
+      activo_id:               activo?.id || null,
+      area:                    null,
+      fecha_inicio:            new Date(fechaInicio).toISOString(),
     }
 
     let res
     if (editing) {
-      // El código se mantiene estable; no se regenera al editar
       res = await supabase.from('tickets').update(payload).eq('id', initial.id)
     } else {
       const codigo = await generarCodigo(supabase, tipo, payload.fecha_inicio)
@@ -86,7 +117,8 @@ export default function TicketForm({ initial, onClose, onSaved }) {
         </div>
 
         <div className="modal-body">
-          {/* a. Selector de tipo (4 cajones) */}
+
+          {/* ── Tipo de ticket ── */}
           <div className="field">
             <label>Tipo de ticket</label>
             <div className="tipo-grid">
@@ -109,7 +141,7 @@ export default function TicketForm({ initial, onClose, onSaved }) {
             </div>
           </div>
 
-          {/* a. Clasificación solo para incidente */}
+          {/* ── Clasificación (solo incidente) ── */}
           {tipo === 'incidente' && (
             <div className="field">
               <label>Clasificación del incidente</label>
@@ -128,7 +160,7 @@ export default function TicketForm({ initial, onClose, onSaved }) {
             </div>
           )}
 
-          {/* b. Título */}
+          {/* ── Título ── */}
           <div className="field">
             <label>Título <span className="hint">({tituloWords}/{MAX_TITULO} palabras)</span></label>
             <input
@@ -140,42 +172,77 @@ export default function TicketForm({ initial, onClose, onSaved }) {
             />
           </div>
 
-          {/* c. Descripción */}
+          {/* ── Descripción ── */}
           <div className="field">
             <label>Descripción <span className="hint">({descWords}/{MAX_DESC} palabras)</span></label>
             <textarea
               value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
+              onChange={(e) => setDesc(e.target.value)}
               className={descWords > MAX_DESC ? 'invalid' : ''}
               placeholder="Detalle del evento o incidencia…"
             />
           </div>
 
-          {/* d. Sala (combobox con búsqueda) */}
+          {/* ── Sistema (4 cajones con ícono) ── */}
           <div className="field">
-            <label>Sala</label>
-            <Combobox options={SALAS} value={sala} onChange={setSala} placeholder="Buscar sala…" />
+            <label>Sistema</label>
+            {sistemas.length === 0 && (
+              <div style={{ fontSize: 13, color: 'var(--muted)' }}>Cargando sistemas…</div>
+            )}
+            <div className="tipo-grid">
+              {sistemas.map((s) => {
+                const Ico = SYSTEM_ICONS[s.icon] || IconSistema
+                const sel = selectedSistema?.id === s.id
+                return (
+                  <button
+                    type="button"
+                    key={s.id}
+                    className={'tipo-card' + (sel ? ' selected' : '')}
+                    style={sel ? { background: '#475569', borderColor: '#475569' } : {}}
+                    onClick={() => setSelSistema(sel ? null : s)}
+                  >
+                    <span className="tipo-ico"><Ico size={26} /></span>
+                    {s.name}
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
-          {/* e. Activo (selector contra la CMDB) */}
+          {/* ── Grupo (aparece al elegir sistema) ── */}
+          {selectedSistema && grupos.length > 0 && (
+            <div className="field">
+              <label>Grupo</label>
+              <div className="clasif-grid">
+                {grupos.map((g) => (
+                  <button
+                    type="button"
+                    key={g.id}
+                    className={'clasif-card' + (selectedGrupo?.id === g.id ? ' selected' : '')}
+                    onClick={() => setSelGrupo(selectedGrupo?.id === g.id ? null : g)}
+                  >
+                    {g.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Activo (filtrado por sistema y grupo) ── */}
           <div className="field">
             <label>Activo <span className="hint">(desde la CMDB)</span></label>
-            <AssetPicker value={activo} onChange={setActivo} />
+            <AssetPicker
+              value={activo}
+              onChange={setActivo}
+              systemName={selectedSistema?.name || null}
+              tipoName={selectedGrupo?.name || null}
+            />
           </div>
 
-          {/* f. Área */}
-          <div className="field">
-            <label>Área</label>
-            <select value={area} onChange={(e) => setArea(e.target.value)}>
-              <option value="">Selecciona un área…</option>
-              {AREAS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
-            </select>
-          </div>
-
-          {/* g. Fecha y hora de inicio (calendario + hora 24h) */}
+          {/* ── Fecha y hora de inicio ── */}
           <div className="field">
             <label>Fecha y hora de inicio</label>
-            <DateTimePicker value={fechaInicio} onChange={setFechaInicio} />
+            <DateTimePicker value={fechaInicio} onChange={setFecha} />
           </div>
 
           {error && <div className="error-text">{error}</div>}

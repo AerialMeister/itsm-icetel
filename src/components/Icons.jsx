@@ -18,6 +18,8 @@ export const IconLock   = (p) => <S {...p}><rect x="3" y="11" width="18" height=
 export const IconClip   = (p) => <S {...p}><path d="M21.4 11.05 12.25 20.2a5 5 0 0 1-7.07-7.07l9.19-9.19a3 3 0 0 1 4.24 4.24l-9.2 9.19a1 1 0 0 1-1.41-1.41l8.49-8.49" /></S>
 export const IconDownload = (p) => <S {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></S>
 
+export const IconAlertClock = (p) => <S {...p}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></S>
+
 export const TIPO_ICONS = {
   bell: IconBell,
   shield: IconShield,
