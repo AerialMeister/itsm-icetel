@@ -174,14 +174,6 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
                   </td>
                   <td>
                     <div className="row-actions">
-                      {vencido && (
-                        <span
-                          title="Ticket abierto hace más de 1 hora sin actividad"
-                          style={{ color: '#f59e0b', display: 'inline-flex', alignItems: 'center' }}
-                        >
-                          <IconAlertClock size={16} />
-                        </span>
-                      )}
                       <button className="btn-ghost" title="Editar" onClick={() => setEditTicket(t)}>
                         <IconPencil size={16} />
                       </button>
@@ -200,6 +192,14 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
                           onClick={() => setCloseTicket(t)}>
                           <IconLock size={16} />
                         </button>
+                      )}
+                      {vencido && (
+                        <span
+                          title="Ticket abierto hace más de 1 hora sin actividad"
+                          style={{ color: '#f59e0b', display: 'inline-flex', alignItems: 'center' }}
+                        >
+                          <IconAlertClock size={16} />
+                        </span>
                       )}
                     </div>
                   </td>
