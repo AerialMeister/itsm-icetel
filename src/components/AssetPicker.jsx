@@ -4,9 +4,9 @@ import { supabase } from '../supabaseClient'
 // Selector de activos contra la CMDB (función RPC cmdb_buscar_activos).
 // - value: { id, nombre }  (id null => texto libre en 'nombre')
 // - onChange({ id, nombre })
-// - systemName: nombre del sistema seleccionado para filtrar (ej: 'Sistema Eléctrico')
-// - tipoName: nombre del tipo/grupo seleccionado para filtrar (ej: 'UPS')
-export default function AssetPicker({ value, onChange, systemName, tipoName, placeholder = 'Buscar activo en la CMDB…' }) {
+// - sistemaSlug: slug del sistema seleccionado (ej: 'mecanico')
+// - tipoSlug: slug del grupo seleccionado (ej: 'acu')
+export default function AssetPicker({ value, onChange, sistemaSlug, tipoSlug, placeholder = 'Buscar activo en la CMDB…' }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
@@ -25,22 +25,17 @@ export default function AssetPicker({ value, onChange, systemName, tipoName, pla
     let cancel = false
     setLoading(true)
     const h = setTimeout(async () => {
-      const { data, error } = await supabase.rpc('cmdb_buscar_activos', { p_query: query.trim() })
+      const { data, error } = await supabase.rpc('cmdb_buscar_activos', {
+        p_query:   query.trim(),
+        p_sistema: sistemaSlug || '',
+        p_tipo:    tipoSlug    || '',
+      })
       if (cancel) return
-      let filtered = error ? [] : (data || [])
-      // Filtra por sistema si está seleccionado
-      if (systemName && filtered.length) {
-        filtered = filtered.filter((a) => a.sistema === systemName)
-      }
-      // Filtra por tipo/grupo si está seleccionado
-      if (tipoName && filtered.length) {
-        filtered = filtered.filter((a) => a.tipo === tipoName)
-      }
-      setResults(filtered)
+      setResults(error ? [] : (data || []))
       setLoading(false)
     }, 220)
     return () => { cancel = true; clearTimeout(h) }
-  }, [query, open, freeText, systemName, tipoName])
+  }, [query, open, freeText, sistemaSlug, tipoSlug])
 
   const pick = (a) => { onChange({ id: a.id, nombre: a.nombre }); setOpen(false); setQuery('') }
   const clear = () => onChange({ id: null, nombre: '' })

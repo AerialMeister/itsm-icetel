@@ -234,8 +234,8 @@ export default function TicketForm({ initial, onClose, onSaved }) {
             <AssetPicker
               value={activo}
               onChange={setActivo}
-              systemName={selectedSistema?.name || null}
-              tipoName={selectedGrupo?.name || null}
+              sistemaSlug={selectedSistema?.slug || ''}
+              tipoSlug={selectedGrupo?.slug || ''}
             />
           </div>
 
