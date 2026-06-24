@@ -135,11 +135,11 @@ export default function StatsTab({ tickets }) {
         <div className="panel" style={{ overflow: 'hidden' }}>
           <h3>Zonas con más eventos e incidentes</h3>
           {s.porZona.length === 0 ? <div className="empty">Sin datos.</div> : (
-            <table className="mini-table"><tbody>
+            <table className="mini-table" style={{ tableLayout: 'fixed' }}><tbody>
               {s.porZona.slice(0, 8).map((r) => (
                 <tr key={r.name}>
-                  <td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 0, width: '100%' }}>{r.name}</td>
-                  <td style={{ whiteSpace: 'nowrap', paddingLeft: 12, fontWeight: 700 }}>{r.count}</td>
+                  <td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</td>
+                  <td style={{ width: 36, textAlign: 'right', fontWeight: 700 }}>{r.count}</td>
                 </tr>
               ))}
             </tbody></table>
@@ -150,11 +150,11 @@ export default function StatsTab({ tickets }) {
         <div className="panel" style={{ overflow: 'hidden' }}>
           <h3>Activos con más eventos e incidentes</h3>
           {s.porActivo.length === 0 ? <div className="empty">Sin datos.</div> : (
-            <table className="mini-table"><tbody>
+            <table className="mini-table" style={{ tableLayout: 'fixed' }}><tbody>
               {s.porActivo.slice(0, 8).map((r) => (
                 <tr key={r.name}>
-                  <td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 0, width: '100%' }}>{r.name}</td>
-                  <td style={{ whiteSpace: 'nowrap', paddingLeft: 12, fontWeight: 700 }}>{r.count}</td>
+                  <td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</td>
+                  <td style={{ width: 36, textAlign: 'right', fontWeight: 700 }}>{r.count}</td>
                 </tr>
               ))}
             </tbody></table>
