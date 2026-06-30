@@ -10,7 +10,7 @@ import {
   JORNADAS,
 } from '../constants'
 import { TIPO_ICONS, IconX, IconSol, IconLuna } from './Icons'
-import { IconRayo, IconClima, IconEdificio, IconSistema } from './SystemIcons'
+import { IconRayo, IconClima, IconEdificio, IconSistema, IconOtros } from './SystemIcons'
 import AssetPicker from './AssetPicker'
 import DateTimePicker from './DateTimePicker'
 import { generarCodigo } from '../lib/codigo'
@@ -33,6 +33,7 @@ const SYSTEM_ICONS = {
   clima:    IconClima,
   edificio: IconEdificio,
   sistema:  IconSistema,
+  otros:    IconOtros,
 }
 
 const JORNADA_ICONS = { sol: IconSol, luna: IconLuna }
@@ -92,7 +93,7 @@ export default function TicketForm({ initial, onClose, onSaved }) {
   // Lista de sistemas + opción sintética "Otros"
   const sistemasUI = [
     ...sistemas,
-    { id: SISTEMA_OTROS_ID, name: 'Otros', icon: 'sistema', slug: '' },
+    { id: SISTEMA_OTROS_ID, name: 'Otros', icon: 'otros', slug: '' },
   ]
 
   const validar = () => {
@@ -352,19 +353,6 @@ export default function TicketForm({ initial, onClose, onSaved }) {
               <AssetPicker value={activo} onChange={setActivo}
                 sistemaSlug={selectedSistema && selectedSistema.id !== SISTEMA_OTROS_ID ? (selectedSistema?.slug || '') : ''}
                 tipoSlug={selectedGrupo?.slug || ''} />
-              <div className="activo-chips">
-                <span className="activo-chips-label">En lugar de un activo:</span>
-                <button type="button"
-                  className={'chip' + (activo?.nombre === 'Equipos cliente final' && !activo?.id ? ' chip-active' : '')}
-                  onClick={() => setActivo({ id: null, nombre: 'Equipos cliente final' })}>
-                  Equipos cliente final
-                </button>
-                <button type="button"
-                  className={'chip' + (activo?.nombre === 'Otros' && !activo?.id ? ' chip-active' : '')}
-                  onClick={() => setActivo({ id: null, nombre: 'Otros' })}>
-                  Otros
-                </button>
-              </div>
             </div>
           )}
 
