@@ -1,8 +1,15 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../auth/AuthContext'
-import { TIPOS, CLASIFICACIONES_INCIDENTE } from '../constants'
-import { TIPO_ICONS, IconX } from './Icons'
+import {
+  TIPOS,
+  CLASIFICACIONES_INCIDENTE,
+  CLASIFICACIONES_EVENTO,
+  CLASIFICACIONES_PROYECTO,
+  ESPECIALIDADES,
+  JORNADAS,
+} from '../constants'
+import { TIPO_ICONS, IconX, IconSol, IconLuna } from './Icons'
 import { IconRayo, IconClima, IconEdificio, IconSistema } from './SystemIcons'
 import AssetPicker from './AssetPicker'
 import DateTimePicker from './DateTimePicker'
@@ -11,6 +18,8 @@ import { generarCodigo } from '../lib/codigo'
 const countWords = (s) => (s.trim() ? s.trim().split(/\s+/).length : 0)
 const MAX_TITULO = 20
 const MAX_DESC = 100
+
+const SISTEMA_OTROS_ID = '__otros__'
 
 const toLocalInput = (iso) => {
   if (!iso) return ''
@@ -26,6 +35,8 @@ const SYSTEM_ICONS = {
   sistema:  IconSistema,
 }
 
+const JORNADA_ICONS = { sol: IconSol, luna: IconLuna }
+
 export default function TicketForm({ initial, onClose, onSaved }) {
   const { user, perfil } = useAuth()
   const editing = Boolean(initial)
@@ -35,7 +46,10 @@ export default function TicketForm({ initial, onClose, onSaved }) {
   const [titulo, setTitulo]     = useState(initial?.titulo || '')
   const [descripcion, setDesc]  = useState(initial?.descripcion || '')
   const [activo, setActivo]     = useState({ id: initial?.activo_id || null, nombre: initial?.activo || '' })
+  const [especialidad, setEsp]  = useState(initial?.area || '')
+  const [jornada, setJornada]   = useState(initial?.jornada || '')
   const [fechaInicio, setFecha] = useState(toLocalInput(initial?.fecha_inicio) || '')
+  const [fechaFin, setFechaFin] = useState(toLocalInput(initial?.fecha_fin) || '')
   const [saving, setSaving]     = useState(false)
   const [error, setError]       = useState('')
 
@@ -47,12 +61,24 @@ export default function TicketForm({ initial, onClose, onSaved }) {
   const tituloWords = countWords(titulo)
   const descWords   = countWords(descripcion)
 
+  // Banderas según el tipo de ticket
+  const esProyecto      = tipo === 'proyecto'
+  const esMantenimiento = tipo === 'mantenimiento_preventivo' || tipo === 'mantenimiento_correctivo'
+  const mostrarEspecialidad = esProyecto || esMantenimiento
+  const mostrarJornada      = esProyecto || esMantenimiento
+  const mostrarFechaFin     = esProyecto || esMantenimiento
+  // Proyecto reemplaza Sistema/Activo por Especialidad; el resto los mantiene
+  const mostrarSistemaActivo = !esProyecto
+
   useEffect(() => {
     supabase.rpc('cmdb_listar_sistemas').then(({ data }) => setSistemas(data || []))
   }, [])
 
   useEffect(() => {
-    if (!selectedSistema) { setGrupos([]); setSelGrupo(null); return }
+    // "Otros" o sin sistema => no se cargan grupos desde la CMDB
+    if (!selectedSistema || selectedSistema.id === SISTEMA_OTROS_ID) {
+      setGrupos([]); setSelGrupo(null); return
+    }
     supabase.rpc('cmdb_listar_tipos', { p_system_id: selectedSistema.id })
       .then(({ data }) => setGrupos(data || []))
     setSelGrupo(null)
@@ -63,13 +89,27 @@ export default function TicketForm({ initial, onClose, onSaved }) {
     setActivo({ id: null, nombre: '' })
   }, [selectedGrupo])
 
+  // Lista de sistemas + opción sintética "Otros"
+  const sistemasUI = [
+    ...sistemas,
+    { id: SISTEMA_OTROS_ID, name: 'Otros', icon: 'sistema', slug: '' },
+  ]
+
   const validar = () => {
     if (!tipo) return 'Selecciona el tipo de ticket.'
     if (tipo === 'incidente' && !clasif) return 'Selecciona la clasificación del incidente.'
+    if (tipo === 'evento' && !clasif) return 'Selecciona la clasificación del evento.'
+    if (esProyecto && !clasif) return 'Selecciona el nivel de riesgo del proyecto.'
     if (!titulo.trim()) return 'Ingresa un título.'
     if (tituloWords > MAX_TITULO) return `El título supera las ${MAX_TITULO} palabras.`
     if (descWords > MAX_DESC) return `La descripción supera las ${MAX_DESC} palabras.`
+    if (esProyecto && !especialidad) return 'Selecciona la especialidad.'
+    if (esProyecto && !jornada) return 'Selecciona la jornada.'
     if (!fechaInicio) return 'Ingresa la fecha y hora de inicio.'
+    if (esProyecto && !fechaFin) return 'Ingresa la fecha y hora de fin.'
+    if (mostrarFechaFin && fechaFin && fechaInicio && new Date(fechaFin) < new Date(fechaInicio)) {
+      return 'La fecha de fin no puede ser anterior a la de inicio.'
+    }
     return ''
   }
 
@@ -81,14 +121,16 @@ export default function TicketForm({ initial, onClose, onSaved }) {
 
     const payload = {
       tipo_ticket:              tipo,
-      clasificacion_incidente:  tipo === 'incidente' ? clasif : null,
+      clasificacion_incidente:  clasif || null,
       titulo:                   titulo.trim(),
       descripcion:              descripcion.trim() || null,
       sala:                     null,
-      activo:                   activo?.nombre || null,
-      activo_id:                activo?.id || null,
-      area:                     null,
+      activo:                   mostrarSistemaActivo ? (activo?.nombre || null) : null,
+      activo_id:                mostrarSistemaActivo ? (activo?.id || null) : null,
+      area:                     mostrarEspecialidad ? (especialidad || null) : null,
+      jornada:                  mostrarJornada ? (jornada || null) : null,
       fecha_inicio:             new Date(fechaInicio).toISOString(),
+      fecha_fin:                mostrarFechaFin && fechaFin ? new Date(fechaFin).toISOString() : null,
       registrado_por:           user?.id || null,
       registrado_por_nombre:    perfil?.nombre || user?.email || null,
     }
@@ -106,6 +148,19 @@ export default function TicketForm({ initial, onClose, onSaved }) {
     setSaving(false)
     if (res.error) { setError('Error al guardar: ' + res.error.message); return }
     onSaved()
+  }
+
+  // Cambia el tipo y limpia campos que no aplican
+  const cambiarTipo = (value) => {
+    setTipo(value)
+    setClasif('')
+    if (value === 'proyecto') {
+      // Proyecto no usa Sistema/Activo
+      setSelSistema(null); setSelGrupo(null); setActivo({ id: null, nombre: '' })
+    }
+    if (value === 'evento' || value === 'incidente') {
+      setEsp(''); setJornada(''); setFechaFin('')
+    }
   }
 
   return (
@@ -129,7 +184,7 @@ export default function TicketForm({ initial, onClose, onSaved }) {
                   <button type="button" key={t.value}
                     className={'tipo-card' + (sel ? ' selected' : '')}
                     style={sel ? { background: t.color, borderColor: t.color } : { color: t.color }}
-                    onClick={() => { setTipo(t.value); if (t.value !== 'incidente') setClasif('') }}
+                    onClick={() => cambiarTipo(t.value)}
                   >
                     <span className="tipo-ico"><Ico size={26} /></span>
                     {t.label}
@@ -139,7 +194,7 @@ export default function TicketForm({ initial, onClose, onSaved }) {
             </div>
           </div>
 
-          {/* Clasificación (solo incidente) */}
+          {/* Clasificación: Incidente */}
           {tipo === 'incidente' && (
             <div className="field">
               <label>Clasificación del incidente</label>
@@ -152,6 +207,44 @@ export default function TicketForm({ initial, onClose, onSaved }) {
                     {c.label}
                   </button>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Clasificación: Evento */}
+          {tipo === 'evento' && (
+            <div className="field">
+              <label>Clasificación del evento</label>
+              <div className="clasif-grid clasif-grid-2">
+                {CLASIFICACIONES_EVENTO.map((c) => (
+                  <button type="button" key={c.value}
+                    className={'clasif-card' + (clasif === c.value ? ' selected' : '')}
+                    onClick={() => setClasif(c.value)}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Clasificación: Proyecto (nivel de riesgo, con colores) */}
+          {esProyecto && (
+            <div className="field">
+              <label>Nivel de riesgo del proyecto</label>
+              <div className="clasif-grid">
+                {CLASIFICACIONES_PROYECTO.map((c) => {
+                  const sel = clasif === c.value
+                  return (
+                    <button type="button" key={c.value}
+                      className={'clasif-card riesgo-card' + (sel ? ' selected' : '')}
+                      style={{ background: c.box, borderColor: c.box, color: c.text }}
+                      onClick={() => setClasif(c.value)}
+                    >
+                      {c.label}
+                    </button>
+                  )
+                })}
               </div>
             </div>
           )}
@@ -172,30 +265,71 @@ export default function TicketForm({ initial, onClose, onSaved }) {
               placeholder="Detalle del evento o incidencia…" />
           </div>
 
-          {/* Sistema */}
-          <div className="field">
-            <label>Sistema</label>
-            {sistemas.length === 0 && <div style={{ fontSize: 13, color: 'var(--muted)' }}>Cargando sistemas…</div>}
-            <div className="tipo-grid">
-              {sistemas.map((s) => {
-                const Ico = SYSTEM_ICONS[s.icon] || IconSistema
-                const sel = selectedSistema?.id === s.id
-                return (
-                  <button type="button" key={s.id}
-                    className={'tipo-card' + (sel ? ' selected' : '')}
-                    style={sel ? { background: '#475569', borderColor: '#475569' } : {}}
-                    onClick={() => setSelSistema(sel ? null : s)}
+          {/* Especialidad (Proyecto y Mantenimientos) — reemplaza al Sistema en Proyecto */}
+          {mostrarEspecialidad && (
+            <div className="field">
+              <label>Especialidad</label>
+              <div className="clasif-grid">
+                {ESPECIALIDADES.map((e) => (
+                  <button type="button" key={e.value}
+                    className={'clasif-card' + (especialidad === e.value ? ' selected' : '')}
+                    onClick={() => setEsp(especialidad === e.value ? '' : e.value)}
                   >
-                    <span className="tipo-ico"><Ico size={26} /></span>
-                    {s.name}
+                    {e.label}
                   </button>
-                )
-              })}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* Jornada (Proyecto y Mantenimientos) */}
+          {mostrarJornada && (
+            <div className="field">
+              <label>Jornada</label>
+              <div className="jornada-grid">
+                {JORNADAS.map((j) => {
+                  const JIco = JORNADA_ICONS[j.icon]
+                  const sel = jornada === j.value
+                  return (
+                    <button type="button" key={j.value}
+                      className={'jornada-card' + (sel ? ` selected ${j.value}` : '')}
+                      onClick={() => setJornada(sel ? '' : j.value)}
+                    >
+                      <span className="tipo-ico"><JIco size={24} /></span>
+                      {j.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Sistema (todos menos Proyecto) */}
+          {mostrarSistemaActivo && (
+            <div className="field">
+              <label>Sistema</label>
+              {sistemas.length === 0 && <div style={{ fontSize: 13, color: 'var(--muted)' }}>Cargando sistemas…</div>}
+              <div className="tipo-grid">
+                {sistemasUI.map((s) => {
+                  const Ico = SYSTEM_ICONS[s.icon] || IconSistema
+                  const sel = selectedSistema?.id === s.id
+                  return (
+                    <button type="button" key={s.id}
+                      className={'tipo-card' + (sel ? ' selected' : '')}
+                      style={sel ? { background: '#475569', borderColor: '#475569' } : {}}
+                      onClick={() => setSelSistema(sel ? null : s)}
+                    >
+                      <span className="tipo-ico"><Ico size={26} /></span>
+                      {s.name}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Grupo */}
-          {selectedSistema && grupos.length > 0 && (
+          {mostrarSistemaActivo && selectedSistema && selectedSistema.id !== SISTEMA_OTROS_ID && grupos.length > 0 && (
             <div className="field">
               <label>Grupo</label>
               <div className="clasif-grid">
@@ -212,18 +346,41 @@ export default function TicketForm({ initial, onClose, onSaved }) {
           )}
 
           {/* Activo */}
-          <div className="field">
-            <label>Activo <span className="hint">(desde la CMDB)</span></label>
-            <AssetPicker value={activo} onChange={setActivo}
-              sistemaSlug={selectedSistema?.slug || ''}
-              tipoSlug={selectedGrupo?.slug || ''} />
-          </div>
+          {mostrarSistemaActivo && (
+            <div className="field">
+              <label>Activo <span className="hint">(desde la CMDB)</span></label>
+              <AssetPicker value={activo} onChange={setActivo}
+                sistemaSlug={selectedSistema && selectedSistema.id !== SISTEMA_OTROS_ID ? (selectedSistema?.slug || '') : ''}
+                tipoSlug={selectedGrupo?.slug || ''} />
+              <div className="activo-chips">
+                <span className="activo-chips-label">En lugar de un activo:</span>
+                <button type="button"
+                  className={'chip' + (activo?.nombre === 'Equipos cliente final' && !activo?.id ? ' chip-active' : '')}
+                  onClick={() => setActivo({ id: null, nombre: 'Equipos cliente final' })}>
+                  Equipos cliente final
+                </button>
+                <button type="button"
+                  className={'chip' + (activo?.nombre === 'Otros' && !activo?.id ? ' chip-active' : '')}
+                  onClick={() => setActivo({ id: null, nombre: 'Otros' })}>
+                  Otros
+                </button>
+              </div>
+            </div>
+          )}
 
-          {/* Fecha y hora */}
+          {/* Fecha y hora de inicio */}
           <div className="field">
-            <label>Fecha y hora de inicio</label>
+            <label>{mostrarFechaFin ? 'Fecha y hora de inicio' : 'Fecha y hora de inicio'}</label>
             <DateTimePicker value={fechaInicio} onChange={setFecha} />
           </div>
+
+          {/* Fecha y hora de fin (Proyecto y Mantenimientos) */}
+          {mostrarFechaFin && (
+            <div className="field">
+              <label>Fecha y hora de fin</label>
+              <DateTimePicker value={fechaFin} onChange={setFechaFin} />
+            </div>
+          )}
 
           {error && <div className="error-text">{error}</div>}
         </div>

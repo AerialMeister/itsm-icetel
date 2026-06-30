@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react'
 import * as XLSX from 'xlsx'
-import { TIPOS, tipoLabel, tipoColor, clasifLabel } from '../constants'
+import { TIPOS, tipoLabel, tipoColor, clasifLabel, areaLabel, jornadaLabel } from '../constants'
 import { TIPO_ICONS, IconPencil, IconNote, IconPlus, IconLock, IconClip, IconDownload, IconAlertClock } from './Icons'
 import { supabase } from '../supabaseClient'
 import TicketForm from './TicketForm'
@@ -10,6 +10,28 @@ import AttachmentsModal from './AttachmentsModal'
 
 const fmt = (iso) => (iso ? new Date(iso).toLocaleString('es-CL', { hour12: false, dateStyle: 'short', timeStyle: 'short' }) : '—')
 const fmtFull = (iso) => (iso ? new Date(iso).toLocaleString('es-CL', { hour12: false }) : '')
+
+// Duración entre dos fechas en formato compacto (ej: "2d 5h 30m")
+const fmtDuracion = (inicioIso, cierreIso) => {
+  if (!inicioIso || !cierreIso) return ''
+  let ms = new Date(cierreIso).getTime() - new Date(inicioIso).getTime()
+  if (isNaN(ms) || ms < 0) return ''
+  const totalMin = Math.floor(ms / 60000)
+  const d = Math.floor(totalMin / 1440)
+  const h = Math.floor((totalMin % 1440) / 60)
+  const m = totalMin % 60
+  const parts = []
+  if (d) parts.push(`${d}d`)
+  if (h) parts.push(`${h}h`)
+  if (m || (!d && !h)) parts.push(`${m}m`)
+  return parts.join(' ')
+}
+
+// Etiqueta de "tiempo abierto" para la tabla
+const tiempoAbierto = (t) => {
+  if (t.estado === 'cerrado') return fmtDuracion(t.fecha_inicio, t.fecha_cierre) || '—'
+  return 'En curso'
+}
 
 const estaVencido = (ticket) => {
   if (ticket.estado !== 'abierto') return false
@@ -122,7 +144,7 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
     const GRIS_CLARO  = 'F1F5F9'
     const BLANCO      = 'FFFFFF'
 
-    const headers = ['Código', 'Tipo', 'Clasificación', 'Título', 'Descripción', 'Activo', 'Sistema', 'Ubicación', 'Registrado por', 'Inicio', 'Cierre', 'Estado']
+    const headers = ['Código', 'Tipo', 'Clasificación', 'Título', 'Descripción', 'Activo', 'Sistema', 'Especialidad', 'Jornada', 'Ubicación', 'Registrado por', 'Inicio', 'Fin', 'Cierre', 'Tiempo abierto', 'Estado']
     const rows = filtered.map((t) => [
       t.codigo || '',
       tipoLabel(t.tipo_ticket),
@@ -131,10 +153,14 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
       t.descripcion || '',
       t.activo || '',
       t.sistema || '',
+      t.area ? areaLabel(t.area) : '',
+      t.jornada ? jornadaLabel(t.jornada) : '',
       t.ubicacion_activo || '',
       t.registrado_por_nombre || '',
       fmtFull(t.fecha_inicio),
+      fmtFull(t.fecha_fin),
       fmtFull(t.fecha_cierre),
+      tiempoAbierto(t),
       t.estado === 'abierto' ? 'Abierto' : 'Cerrado',
     ])
 
@@ -144,7 +170,8 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
     // Anchos de columna
     ws['!cols'] = [
       { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 30 }, { wch: 40 },
-      { wch: 20 }, { wch: 20 }, { wch: 25 }, { wch: 22 }, { wch: 18 }, { wch: 18 }, { wch: 10 },
+      { wch: 20 }, { wch: 20 }, { wch: 18 }, { wch: 12 }, { wch: 25 }, { wch: 22 },
+      { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 16 }, { wch: 10 },
     ]
 
     // Estilo encabezado
@@ -194,8 +221,8 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
     })
 
     // Fila de totales
-    const totalRow = ri => ri + rows.length + 1
-    const totalesData = [`Total: ${rows.length} ticket(s)`, '', '', '', '', '', '', '', '', '', '', '']
+    const totalesData = new Array(headers.length).fill('')
+    totalesData[0] = `Total: ${rows.length} ticket(s)`
     XLSX.utils.sheet_add_aoa(ws, [totalesData], { origin: { r: rows.length + 1, c: 0 } })
     const totalCell = XLSX.utils.encode_cell({ r: rows.length + 1, c: 0 })
     if (ws[totalCell]) ws[totalCell].s = {
@@ -372,14 +399,15 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
               <th>Activo</th>
               <th>Inicio</th>
               <th>Cierre</th>
+              <th>Tiempo abierto</th>
               <th>Estado</th>
               <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><td colSpan={9} className="empty">Cargando tickets…</td></tr>}
+            {loading && <tr><td colSpan={10} className="empty">Cargando tickets…</td></tr>}
             {!loading && filtered.length === 0 && (
-              <tr><td colSpan={9} className="empty">No hay tickets que mostrar.</td></tr>
+              <tr><td colSpan={10} className="empty">No hay tickets que mostrar.</td></tr>
             )}
             {!loading && filtered.map((t) => {
               const Ico = TIPO_ICONS[TIPOS.find((x) => x.value === t.tipo_ticket)?.icon] || (() => null)
@@ -393,7 +421,7 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
                     <span className="tipo-badge" style={{ background: tipoColor(t.tipo_ticket) }}>
                       <Ico size={13} /> {tipoLabel(t.tipo_ticket)}
                     </span>
-                    {t.tipo_ticket === 'incidente' && t.clasificacion_incidente && (
+                    {t.clasificacion_incidente && (
                       <span className="clasif-tag">{clasifLabel(t.clasificacion_incidente)}</span>
                     )}
                   </td>
@@ -402,6 +430,7 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
                   <td>{t.activo || '—'}</td>
                   <td>{fmt(t.fecha_inicio)}</td>
                   <td>{fmt(t.fecha_cierre)}</td>
+                  <td>{tiempoAbierto(t)}</td>
                   <td>
                     <span className={t.estado === 'abierto' ? 'estado-abierto' : 'estado-cerrado'}>
                       {t.estado === 'abierto' ? 'Abierto' : 'Cerrado'}
