@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, Legend, PieChart, Pie,
 } from 'recharts'
-import { computeStats, availableMonths, monthLabel, monthKey, formatDuration } from '../lib/stats'
+import { computeStats, availablePeriods, periodLabel, formatDuration } from '../lib/stats'
 
 const currentMonthKey = () => {
   const n = new Date()
@@ -31,7 +31,7 @@ function Split({ abierto, cerrado }) {
 
 export default function StatsTab({ tickets }) {
   const [mes, setMes] = useState(currentMonthKey())
-  const meses = useMemo(() => availableMonths(tickets), [tickets])
+  const periodos = useMemo(() => availablePeriods(tickets), [tickets])
   const s = useMemo(() => computeStats(tickets, mes), [tickets, mes])
 
   return (
@@ -39,9 +39,9 @@ export default function StatsTab({ tickets }) {
       <div className="stats-head">
         <h2>Estadísticas</h2>
         <select className="filter-select" value={mes} onChange={(e) => setMes(e.target.value)}>
-          {meses.map((m) => (
-            <option key={m} value={m}>
-              {monthLabel(m)}{m === currentMonthKey() ? ' (mes actual)' : ''}
+          {periodos.map((p) => (
+            <option key={p.key} value={p.key}>
+              {p.label}{p.key === currentMonthKey() ? ' (mes actual)' : ''}
             </option>
           ))}
         </select>
@@ -68,14 +68,14 @@ export default function StatsTab({ tickets }) {
         <div className="stat-card">
           <div className="label">Total de tickets</div>
           <div className="value">{s.total}</div>
-          <div className="sub">{monthLabel(mes)}</div>
+          <div className="sub">{periodLabel(mes)}</div>
         </div>
       </div>
 
       <div className="panels-grid">
         {/* Tickets generados por día */}
         <div className="panel full">
-          <h3>Tickets generados en el mes</h3>
+          <h3>{s.anual ? 'Tickets generados en el año (por mes)' : 'Tickets generados en el mes (por día)'}</h3>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={s.porDia}>
               <XAxis dataKey="dia" fontSize={11} />

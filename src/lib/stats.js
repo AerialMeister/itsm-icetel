@@ -6,10 +6,16 @@ export const monthKey = (iso) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
+// ¿La clave es un año completo (YYYY) en vez de un mes (YYYY-MM)?
+export const isYearKey = (key) => /^\d{4}$/.test(String(key))
+
 export const monthLabel = (key) => {
-  const [y, m] = key.split('-').map(Number)
+  const [y, m] = String(key).split('-').map(Number)
   return new Date(y, m - 1, 1).toLocaleDateString('es-CL', { month: 'long', year: 'numeric' })
 }
+
+// Etiqueta para cualquier período (mes o año completo)
+export const periodLabel = (key) => (isYearKey(key) ? `Todo el año ${key}` : monthLabel(key))
 
 // Lista de meses disponibles (más reciente primero) + el mes actual siempre
 export const availableMonths = (tickets) => {
@@ -17,6 +23,23 @@ export const availableMonths = (tickets) => {
   const now = new Date()
   set.add(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`)
   return [...set].sort().reverse()
+}
+
+// Lista de períodos: por cada año presente, primero "Todo el año YYYY" y luego
+// sus meses (más reciente primero). Años ordenados del más reciente al más antiguo.
+export const availablePeriods = (tickets) => {
+  const months = new Set(tickets.map((t) => monthKey(t.fecha_inicio)))
+  const now = new Date()
+  months.add(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`)
+  const monthList = [...months]
+  const years = [...new Set(monthList.map((m) => m.split('-')[0]))].sort().reverse()
+  const out = []
+  years.forEach((y) => {
+    out.push({ key: y, label: `Todo el año ${y}`, isYear: true })
+    monthList.filter((m) => m.startsWith(y + '-')).sort().reverse()
+      .forEach((m) => out.push({ key: m, label: monthLabel(m), isYear: false }))
+  })
+  return out
 }
 
 // Formatea una duración en ms a "Xd Yh Zm"
@@ -34,6 +57,8 @@ export const formatDuration = (ms) => {
 }
 
 const TIPOS_NO_INCIDENTE = ['evento', 'mantenimiento_preventivo', 'mantenimiento_correctivo']
+
+const MESES_CORTOS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
 
 // Mapeo de slug de sistema → área equivalente (para el gráfico "Tickets por área y tipo")
 const SISTEMA_A_AREA = {
@@ -55,8 +80,13 @@ const rankBy = (lista, fn) => {
     .sort((a, b) => b.count - a.count)
 }
 
-export function computeStats(allTickets, mKey) {
-  const tickets = allTickets.filter((t) => monthKey(t.fecha_inicio) === mKey)
+export function computeStats(allTickets, key) {
+  const anual = isYearKey(key)
+  const tickets = allTickets.filter((t) => (
+    anual
+      ? String(new Date(t.fecha_inicio).getFullYear()) === String(key)
+      : monthKey(t.fecha_inicio) === key
+  ))
 
   // Conteo por tipo
   const porTipo = TIPOS.map((t) => ({
@@ -138,17 +168,27 @@ export function computeStats(allTickets, mKey) {
     })
     .sort((a, b) => b.incidentes - a.incidentes)
 
-  // Tickets por día del mes
-  const [yy, mm] = mKey.split('-').map(Number)
-  const diasMes = new Date(yy, mm, 0).getDate()
-  const porDia = Array.from({ length: diasMes }, (_, i) => ({ dia: String(i + 1), count: 0 }))
-  tickets.forEach((t) => {
-    const d = new Date(t.fecha_inicio).getDate()
-    if (porDia[d - 1]) porDia[d - 1].count++
-  })
+  // Serie temporal: por día del mes, o por mes si el período es un año completo
+  let porDia
+  if (anual) {
+    porDia = MESES_CORTOS.map((nombre) => ({ dia: nombre, count: 0 }))
+    tickets.forEach((t) => {
+      const m = new Date(t.fecha_inicio).getMonth()
+      if (porDia[m]) porDia[m].count++
+    })
+  } else {
+    const [yy, mm] = key.split('-').map(Number)
+    const diasMes = new Date(yy, mm, 0).getDate()
+    porDia = Array.from({ length: diasMes }, (_, i) => ({ dia: String(i + 1), count: 0 }))
+    tickets.forEach((t) => {
+      const d = new Date(t.fecha_inicio).getDate()
+      if (porDia[d - 1]) porDia[d - 1].count++
+    })
+  }
 
   return {
     total: tickets.length,
+    anual,
     porDia,
     porTipo,
     incidentesEstado,
