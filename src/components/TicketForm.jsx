@@ -100,7 +100,7 @@ export default function TicketForm({ initial, onClose, onSaved }) {
     if (!tipo) return 'Selecciona el tipo de ticket.'
     if (tipo === 'incidente' && !clasif) return 'Selecciona la clasificación del incidente.'
     if (tipo === 'evento' && !clasif) return 'Selecciona la clasificación del evento.'
-    if (esProyecto && !clasif) return 'Selecciona el nivel de riesgo del proyecto.'
+    if ((esProyecto || esMantenimiento) && !clasif) return 'Selecciona el nivel de riesgo.'
     if (!titulo.trim()) return 'Ingresa un título.'
     if (tituloWords > MAX_TITULO) return `El título supera las ${MAX_TITULO} palabras.`
     if (descWords > MAX_DESC) return `La descripción supera las ${MAX_DESC} palabras.`
@@ -229,10 +229,10 @@ export default function TicketForm({ initial, onClose, onSaved }) {
             </div>
           )}
 
-          {/* Clasificación: Proyecto (nivel de riesgo, con colores) */}
-          {esProyecto && (
+          {/* Clasificación: Proyecto y Mantenimientos (nivel de riesgo, con colores) */}
+          {(esProyecto || esMantenimiento) && (
             <div className="field">
-              <label>Nivel de riesgo del proyecto</label>
+              <label>Nivel de riesgo</label>
               <div className="clasif-grid">
                 {CLASIFICACIONES_PROYECTO.map((c) => {
                   const sel = clasif === c.value
@@ -358,7 +358,7 @@ export default function TicketForm({ initial, onClose, onSaved }) {
 
           {/* Fecha y hora de inicio */}
           <div className="field">
-            <label>{mostrarFechaFin ? 'Fecha y hora de inicio' : 'Fecha y hora de inicio'}</label>
+            <label>Fecha y hora de inicio</label>
             <DateTimePicker value={fechaInicio} onChange={setFecha} />
           </div>
 
