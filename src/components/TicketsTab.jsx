@@ -1,6 +1,10 @@
 import { useState, useMemo, useRef } from 'react'
-import * as XLSX from 'xlsx'
-import { TIPOS, tipoLabel, tipoColor, clasifLabel, areaLabel, jornadaLabel } from '../constants'
+import * as XLSX from 'xlsx-js-style'
+import {
+  TIPOS, ESPECIALIDADES, JORNADAS,
+  CLASIFICACIONES_INCIDENTE, CLASIFICACIONES_EVENTO, CLASIFICACIONES_PROYECTO,
+  tipoLabel, tipoColor, clasifLabel, areaLabel, jornadaLabel,
+} from '../constants'
 import { TIPO_ICONS, IconPencil, IconNote, IconPlus, IconLock, IconClip, IconDownload, IconAlertClock } from './Icons'
 import { supabase } from '../supabaseClient'
 import TicketForm from './TicketForm'
@@ -31,6 +35,42 @@ const fmtDuracion = (inicioIso, cierreIso) => {
 const tiempoAbierto = (t) => {
   if (t.estado === 'cerrado') return fmtDuracion(t.fecha_inicio, t.fecha_cierre) || '—'
   return 'En curso'
+}
+
+// Convierte un valor de celda (texto es-CL, ISO, Date o serial de Excel) a ISO
+const parseFecha = (v) => {
+  if (v === null || v === undefined || String(v).trim() === '') return null
+  if (v instanceof Date) return isNaN(v) ? null : v.toISOString()
+  if (typeof v === 'number') {
+    const d = new Date(Math.round((v - 25569) * 86400 * 1000)) // serial Excel
+    return isNaN(d) ? null : d.toISOString()
+  }
+  const s = String(v).trim()
+  // Formato es-CL: DD-MM-YYYY [HH:mm[:ss]]  (o con /)
+  const m = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/)
+  if (m) {
+    const [, dd, mm, yyyy, hh = '0', mi = '0', ss = '0'] = m
+    const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh), Number(mi), Number(ss))
+    return isNaN(d) ? null : d.toISOString()
+  }
+  const d = new Date(s) // ISO u otros formatos reconocidos
+  return isNaN(d) ? null : d.toISOString()
+}
+
+// Mapa etiqueta/valor -> valor (para reimportar desde el Excel exportado)
+const revMap = (arr) => {
+  const o = {}
+  arr.forEach((x) => { o[String(x.label).toLowerCase()] = x.value; o[String(x.value).toLowerCase()] = x.value })
+  return o
+}
+const TIPO_VALUES    = revMap(TIPOS)
+const CLASIF_VALUES  = { ...revMap(CLASIFICACIONES_INCIDENTE), ...revMap(CLASIFICACIONES_EVENTO), ...revMap(CLASIFICACIONES_PROYECTO) }
+const AREA_VALUES    = revMap(ESPECIALIDADES)
+const JORNADA_VALUES = revMap(JORNADAS)
+const ESTADO_VALUES  = { abierto: 'abierto', cerrado: 'cerrado' }
+const mapVal = (map, cell, def = null) => {
+  if (cell === null || cell === undefined || String(cell).trim() === '') return def
+  return map[String(cell).trim().toLowerCase()] || def
 }
 
 const estaVencido = (ticket) => {
@@ -253,7 +293,7 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
 
     try {
       const buf = await importFile.arrayBuffer()
-      const wb  = XLSX.read(buf, { type: 'array' })
+      const wb  = XLSX.read(buf, { type: 'array', cellDates: true })
       const ws  = wb.Sheets[wb.SheetNames[0]]
       const rows = XLSX.utils.sheet_to_json(ws, { header: 1 })
 
@@ -262,19 +302,21 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
       const codigoIdx = headerRow.findIndex(h => String(h).toLowerCase().includes('código') || String(h).toLowerCase().includes('codigo'))
       if (codigoIdx === -1) throw new Error('No se encontró columna "Código" en el archivo.')
 
-      const tipoIdx    = headerRow.findIndex(h => String(h).toLowerCase() === 'tipo')
-      const clasifIdx  = headerRow.findIndex(h => String(h).toLowerCase().includes('clasificación') || String(h).toLowerCase().includes('clasificacion'))
-      const tituloIdx  = headerRow.findIndex(h => String(h).toLowerCase() === 'título' || String(h).toLowerCase() === 'titulo')
-      const descIdx    = headerRow.findIndex(h => String(h).toLowerCase().includes('descripción') || String(h).toLowerCase().includes('descripcion'))
-      const activoIdx  = headerRow.findIndex(h => String(h).toLowerCase() === 'activo')
-      const regIdx     = headerRow.findIndex(h => String(h).toLowerCase().includes('registrado'))
-      const inicioIdx  = headerRow.findIndex(h => String(h).toLowerCase() === 'inicio')
-      const cierreIdx  = headerRow.findIndex(h => String(h).toLowerCase() === 'cierre')
-      const estadoIdx  = headerRow.findIndex(h => String(h).toLowerCase() === 'estado')
+      const low = (h) => String(h).toLowerCase()
+      const tipoIdx    = headerRow.findIndex(h => low(h) === 'tipo')
+      const clasifIdx  = headerRow.findIndex(h => low(h).includes('clasificación') || low(h).includes('clasificacion'))
+      const tituloIdx  = headerRow.findIndex(h => low(h) === 'título' || low(h) === 'titulo')
+      const descIdx    = headerRow.findIndex(h => low(h).includes('descripción') || low(h).includes('descripcion'))
+      const activoIdx  = headerRow.findIndex(h => low(h) === 'activo')
+      const espIdx     = headerRow.findIndex(h => low(h).includes('especialidad'))
+      const jornIdx    = headerRow.findIndex(h => low(h).includes('jornada'))
+      const regIdx     = headerRow.findIndex(h => low(h).includes('registrado'))
+      const inicioIdx  = headerRow.findIndex(h => low(h) === 'inicio' || low(h).includes('fecha inicio') || low(h).includes('fecha de inicio'))
+      const finIdx     = headerRow.findIndex(h => low(h) === 'fin' || low(h).includes('fecha fin') || low(h).includes('fecha de fin'))
+      const cierreIdx  = headerRow.findIndex(h => low(h) === 'cierre')
+      const estadoIdx  = headerRow.findIndex(h => low(h) === 'estado')
 
-      // Invertir mapa de labels a values
-      const TIPO_VALUES = { 'Incidente': 'incidente', 'Evento': 'evento', 'M. Preventivo': 'mantenimiento_preventivo', 'Mantenimiento preventivo': 'mantenimiento_preventivo', 'M. Correctivo': 'mantenimiento_correctivo', 'Mantenimiento correctivo': 'mantenimiento_correctivo' }
-      const ESTADO_VALUES = { 'Abierto': 'abierto', 'Cerrado': 'cerrado' }
+      const cell = (row, idx) => (idx >= 0 ? row[idx] : undefined)
 
       const dataRows = rows.slice(1).filter(r => r[codigoIdx] && String(r[codigoIdx]).trim())
 
@@ -288,16 +330,21 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
 
         const payload = {
           codigo,
-          tipo_ticket:             TIPO_VALUES[row[tipoIdx]] || 'evento',
-          clasificacion_incidente: row[clasifIdx] ? row[clasifIdx] : null,
-          titulo:                  row[tituloIdx] || '',
-          descripcion:             row[descIdx] || null,
-          activo:                  row[activoIdx] || null,
-          registrado_por_nombre:   row[regIdx] || null,
-          fecha_inicio:            row[inicioIdx] ? new Date(row[inicioIdx]).toISOString() : null,
-          fecha_cierre:            row[cierreIdx] ? new Date(row[cierreIdx]).toISOString() : null,
-          estado:                  ESTADO_VALUES[row[estadoIdx]] || 'abierto',
+          tipo_ticket:             mapVal(TIPO_VALUES, cell(row, tipoIdx), 'evento'),
+          clasificacion_incidente: mapVal(CLASIF_VALUES, cell(row, clasifIdx)),
+          titulo:                  cell(row, tituloIdx) || '',
+          descripcion:             cell(row, descIdx) || null,
+          activo:                  cell(row, activoIdx) || null,
+          area:                    mapVal(AREA_VALUES, cell(row, espIdx)),
+          jornada:                 mapVal(JORNADA_VALUES, cell(row, jornIdx)),
+          registrado_por_nombre:   cell(row, regIdx) || null,
+          fecha_inicio:            parseFecha(cell(row, inicioIdx)),
+          fecha_fin:               parseFecha(cell(row, finIdx)),
+          fecha_cierre:            parseFecha(cell(row, cierreIdx)),
+          estado:                  mapVal(ESTADO_VALUES, cell(row, estadoIdx), 'abierto'),
         }
+        // Respeta la regla de la BD: si está abierto, no puede tener fecha de cierre
+        if (payload.estado === 'abierto') payload.fecha_cierre = null
 
         // Verificar si existe por código
         const { data: existe } = await supabase.from('tickets').select('id').eq('codigo', codigo).maybeSingle()
