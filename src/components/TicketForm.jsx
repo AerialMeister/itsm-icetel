@@ -50,7 +50,9 @@ export default function TicketForm({ initial, onClose, onSaved }) {
   const [especialidad, setEsp]  = useState(initial?.area || '')
   const [jornada, setJornada]   = useState(initial?.jornada || '')
   const [fechaInicio, setFecha] = useState(toLocalInput(initial?.fecha_inicio) || '')
-  const [fechaFin, setFechaFin] = useState(toLocalInput(initial?.fecha_fin) || '')
+  // Fecha de fin/término: para Proyecto y Mantenimientos se guarda como fecha_cierre
+  // (esos tickets nacen cerrados). Se lee de fecha_fin (legado) o fecha_cierre.
+  const [fechaFin, setFechaFin] = useState(toLocalInput(initial?.fecha_fin || initial?.fecha_cierre) || '')
   const [saving, setSaving]     = useState(false)
   const [error, setError]       = useState('')
 
@@ -67,7 +69,8 @@ export default function TicketForm({ initial, onClose, onSaved }) {
   const esMantenimiento = tipo === 'mantenimiento_preventivo' || tipo === 'mantenimiento_correctivo'
   const mostrarEspecialidad = esProyecto || esMantenimiento
   const mostrarJornada      = esProyecto || esMantenimiento
-  const mostrarFechaFin     = esProyecto || esMantenimiento
+  // Estos tipos declaran fecha de término inmediatamente (que se usa como cierre)
+  const declaraTermino      = esProyecto || esMantenimiento
   // Proyecto reemplaza Sistema/Activo por Especialidad; el resto los mantiene
   const mostrarSistemaActivo = !esProyecto
 
@@ -108,7 +111,7 @@ export default function TicketForm({ initial, onClose, onSaved }) {
     if (esProyecto && !jornada) return 'Selecciona la jornada.'
     if (!fechaInicio) return 'Ingresa la fecha y hora de inicio.'
     if (esProyecto && !fechaFin) return 'Ingresa la fecha y hora de fin.'
-    if (mostrarFechaFin && fechaFin && fechaInicio && new Date(fechaFin) < new Date(fechaInicio)) {
+    if (declaraTermino && fechaFin && fechaInicio && new Date(fechaFin) < new Date(fechaInicio)) {
       return 'La fecha de fin no puede ser anterior a la de inicio.'
     }
     return ''
@@ -131,9 +134,17 @@ export default function TicketForm({ initial, onClose, onSaved }) {
       area:                     mostrarEspecialidad ? (especialidad || null) : null,
       jornada:                  mostrarJornada ? (jornada || null) : null,
       fecha_inicio:             new Date(fechaInicio).toISOString(),
-      fecha_fin:                mostrarFechaFin && fechaFin ? new Date(fechaFin).toISOString() : null,
       registrado_por:           user?.id || null,
       registrado_por_nombre:    perfil?.nombre || user?.email || null,
+    }
+
+    // Proyecto y Mantenimientos: la fecha de término es la fecha de cierre y
+    // el ticket nace cerrado (queda como registro/testimonio del trabajo).
+    // Para Evento/Incidente no tocamos estado ni cierre (los maneja el flujo normal).
+    if (declaraTermino) {
+      const cierreISO = fechaFin ? new Date(fechaFin).toISOString() : null
+      payload.fecha_cierre = cierreISO
+      payload.estado = cierreISO ? 'cerrado' : 'abierto'
     }
 
     let res
@@ -142,8 +153,18 @@ export default function TicketForm({ initial, onClose, onSaved }) {
       const { registrado_por, registrado_por_nombre, ...editPayload } = payload
       res = await supabase.from('tickets').update(editPayload).eq('id', initial.id)
     } else {
-      const codigo = await generarCodigo(supabase, tipo, payload.fecha_inicio)
-      res = await supabase.from('tickets').insert({ ...payload, estado: 'abierto', codigo })
+      // Genera el código y, si justo choca con otro (código duplicado),
+      // reintenta: al recalcular tomará el siguiente correlativo libre.
+      let intento = 0
+      do {
+        const codigo = await generarCodigo(supabase, tipo, payload.fecha_inicio)
+        res = await supabase.from('tickets').insert({ ...payload, estado: payload.estado || 'abierto', codigo })
+        intento++
+      } while (
+        res.error &&
+        /uq_tickets_codigo|duplicate key|23505/i.test(res.error.message || '') &&
+        intento < 6
+      )
     }
 
     setSaving(false)
@@ -362,10 +383,10 @@ export default function TicketForm({ initial, onClose, onSaved }) {
             <DateTimePicker value={fechaInicio} onChange={setFecha} />
           </div>
 
-          {/* Fecha y hora de fin (Proyecto y Mantenimientos) */}
-          {mostrarFechaFin && (
+          {/* Fecha y hora de fin (Proyecto y Mantenimientos) — actúa como cierre */}
+          {declaraTermino && (
             <div className="field">
-              <label>Fecha y hora de fin</label>
+              <label>Fecha y hora de fin <span className="hint">(al indicarla, el ticket queda cerrado)</span></label>
               <DateTimePicker value={fechaFin} onChange={setFechaFin} />
             </div>
           )}
