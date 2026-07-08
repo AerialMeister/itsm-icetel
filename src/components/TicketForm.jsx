@@ -17,7 +17,7 @@ import { generarCodigo } from '../lib/codigo'
 
 const countWords = (s) => (s.trim() ? s.trim().split(/\s+/).length : 0)
 const MAX_TITULO = 20
-const MAX_DESC = 100
+const MAX_DESC = 200
 
 const SISTEMA_OTROS_ID = '__otros__'
 
