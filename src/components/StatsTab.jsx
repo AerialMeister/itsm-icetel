@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, Legend, PieChart, Pie,
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, Legend, PieChart, Pie, LabelList,
 } from 'recharts'
 import { computeStats, availablePeriods, periodLabel, formatDuration } from '../lib/stats'
 
@@ -81,7 +81,9 @@ export default function StatsTab({ tickets }) {
               <XAxis dataKey="dia" fontSize={11} />
               <YAxis allowDecimals={false} fontSize={11} />
               <Tooltip />
-              <Bar dataKey="count" name="Tickets" fill="#1d4ed8" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="count" name="Tickets" fill="#1d4ed8" radius={[3, 3, 0, 0]}>
+                <LabelList dataKey="count" position="top" fontSize={11} formatter={(v) => (v ? v : '')} />
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -96,6 +98,7 @@ export default function StatsTab({ tickets }) {
               <Tooltip />
               <Bar dataKey="count" name="Cantidad" radius={[0, 3, 3, 0]}>
                 {s.porTipo.map((t) => <Cell key={t.value} fill={t.color} />)}
+                <LabelList dataKey="count" position="right" fontSize={11} formatter={(v) => (v ? v : '')} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -133,7 +136,7 @@ export default function StatsTab({ tickets }) {
 
         {/* Zonas con más eventos e incidentes */}
         <div className="panel">
-          <h3>Zonas con más eventos e incidentes</h3>
+          <h3>Zonas con más incidentes</h3>
           {s.porZona.length === 0 ? <div className="empty">Sin datos.</div> : (
             <div>
               {s.porZona.slice(0, 8).map((r) => (
@@ -148,7 +151,7 @@ export default function StatsTab({ tickets }) {
 
         {/* Activos con más eventos e incidentes */}
         <div className="panel">
-          <h3>Activos con más eventos e incidentes</h3>
+          <h3>Activos con más incidentes</h3>
           {s.porActivo.length === 0 ? <div className="empty">Sin datos.</div> : (
             <div>
               {s.porActivo.slice(0, 8).map((r) => (

@@ -112,13 +112,10 @@ export function computeStats(allTickets, key) {
     count: incidentes.filter((t) => t.clasificacion_incidente === c.value).length,
   }))
 
-  // Zonas con más eventos e incidentes
+  // Zonas y activos con más incidentes (solo tickets de tipo incidente)
   // Usa ubicacion_activo (viene de la CMDB via la función enriquecida)
-  const eventosEIncidentes = tickets.filter(
-    (t) => t.tipo_ticket === 'evento' || t.tipo_ticket === 'incidente'
-  )
-  const porZona   = rankBy(eventosEIncidentes, (t) => t.ubicacion_activo || '')
-  const porActivo = rankBy(eventosEIncidentes, (t) => t.activo)
+  const porZona   = rankBy(incidentes, (t) => t.ubicacion_activo || '')
+  const porActivo = rankBy(incidentes, (t) => t.activo)
 
   // Tickets por área derivada del sistema del activo
   // Agrupa usando SISTEMA_A_AREA; tickets sin sistema van a "Sin sistema"
