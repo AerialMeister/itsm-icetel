@@ -1,5 +1,7 @@
 import { TIPOS, CLASIFICACIONES_INCIDENTE } from '../constants'
 
+const pad = (n) => String(n).padStart(2, '0')
+
 // Clave YYYY-MM en hora local
 export const monthKey = (iso) => {
   const d = new Date(iso)
@@ -80,13 +82,22 @@ const rankBy = (lista, fn) => {
     .sort((a, b) => b.count - a.count)
 }
 
-export function computeStats(allTickets, key) {
-  const anual = isYearKey(key)
-  const tickets = allTickets.filter((t) => (
-    anual
-      ? String(new Date(t.fecha_inicio).getFullYear()) === String(key)
-      : monthKey(t.fecha_inicio) === key
-  ))
+export function computeStats(allTickets, key, rango) {
+  const esRango = key === 'rango'
+  const anual = !esRango && isYearKey(key)
+  const rDesde = esRango && rango?.desde ? new Date(`${rango.desde}T00:00:00`) : null
+  const rHasta = esRango && rango?.hasta ? new Date(`${rango.hasta}T23:59:59`) : null
+
+  const tickets = allTickets.filter((t) => {
+    const f = new Date(t.fecha_inicio)
+    if (esRango) {
+      if (rDesde && f < rDesde) return false
+      if (rHasta && f > rHasta) return false
+      return true
+    }
+    if (anual) return String(f.getFullYear()) === String(key)
+    return monthKey(t.fecha_inicio) === key
+  })
 
   // Conteo por tipo
   const porTipo = TIPOS.map((t) => ({
@@ -165,15 +176,46 @@ export function computeStats(allTickets, key) {
     })
     .sort((a, b) => b.incidentes - a.incidentes)
 
-  // Serie temporal: por día del mes, o por mes si el período es un año completo
-  let porDia
-  if (anual) {
+  // Serie temporal (barras): por día o por mes según el período seleccionado
+  let porDia, serieUnidad
+  if (esRango) {
+    // Límites efectivos: fechas del rango o, si faltan, el mín/máx de los tickets
+    const fechas = tickets.map((t) => new Date(t.fecha_inicio))
+    const lo = rDesde || (fechas.length ? new Date(Math.min(...fechas)) : new Date())
+    const hi = rHasta || (fechas.length ? new Date(Math.max(...fechas)) : new Date())
+    const spanDias = Math.floor((hi - lo) / 86400000) + 1
+    const buckets = new Map()
+    if (spanDias <= 62) {
+      serieUnidad = 'dia'
+      const cur = new Date(lo.getFullYear(), lo.getMonth(), lo.getDate())
+      const fin = new Date(hi.getFullYear(), hi.getMonth(), hi.getDate())
+      while (cur <= fin) { buckets.set(`${pad(cur.getDate())}/${pad(cur.getMonth() + 1)}`, 0); cur.setDate(cur.getDate() + 1) }
+      tickets.forEach((t) => {
+        const d = new Date(t.fecha_inicio)
+        const k = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`
+        if (buckets.has(k)) buckets.set(k, buckets.get(k) + 1)
+      })
+    } else {
+      serieUnidad = 'mes'
+      const cur = new Date(lo.getFullYear(), lo.getMonth(), 1)
+      const fin = new Date(hi.getFullYear(), hi.getMonth(), 1)
+      while (cur <= fin) { buckets.set(`${MESES_CORTOS[cur.getMonth()]}-${String(cur.getFullYear()).slice(-2)}`, 0); cur.setMonth(cur.getMonth() + 1) }
+      tickets.forEach((t) => {
+        const d = new Date(t.fecha_inicio)
+        const k = `${MESES_CORTOS[d.getMonth()]}-${String(d.getFullYear()).slice(-2)}`
+        if (buckets.has(k)) buckets.set(k, buckets.get(k) + 1)
+      })
+    }
+    porDia = [...buckets].map(([dia, count]) => ({ dia, count }))
+  } else if (anual) {
+    serieUnidad = 'mes'
     porDia = MESES_CORTOS.map((nombre) => ({ dia: nombre, count: 0 }))
     tickets.forEach((t) => {
       const m = new Date(t.fecha_inicio).getMonth()
       if (porDia[m]) porDia[m].count++
     })
   } else {
+    serieUnidad = 'dia'
     const [yy, mm] = key.split('-').map(Number)
     const diasMes = new Date(yy, mm, 0).getDate()
     porDia = Array.from({ length: diasMes }, (_, i) => ({ dia: String(i + 1), count: 0 }))
@@ -186,6 +228,7 @@ export function computeStats(allTickets, key) {
   return {
     total: tickets.length,
     anual,
+    serieUnidad,
     porDia,
     porTipo,
     incidentesEstado,

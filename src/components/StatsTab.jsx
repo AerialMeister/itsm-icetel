@@ -29,22 +29,44 @@ function Split({ abierto, cerrado }) {
   )
 }
 
+const dmy = (iso) => {
+  if (!iso) return '…'
+  const [y, m, d] = iso.split('-')
+  return `${d}/${m}/${y}`
+}
+
 export default function StatsTab({ tickets }) {
   const [mes, setMes] = useState(currentMonthKey())
+  const [desde, setDesde] = useState('')
+  const [hasta, setHasta] = useState('')
   const periodos = useMemo(() => availablePeriods(tickets), [tickets])
-  const s = useMemo(() => computeStats(tickets, mes), [tickets, mes])
+  const s = useMemo(() => computeStats(tickets, mes, { desde, hasta }), [tickets, mes, desde, hasta])
+
+  const esRango = mes === 'rango'
+  const periodoTexto = esRango
+    ? (desde || hasta ? `${dmy(desde)} — ${dmy(hasta)}` : 'Todo el rango')
+    : periodLabel(mes)
 
   return (
     <div className="container">
       <div className="stats-head">
         <h2>Estadísticas</h2>
         <select className="filter-select" value={mes} onChange={(e) => setMes(e.target.value)}>
+          <option value="rango">Rango de fechas…</option>
           {periodos.map((p) => (
             <option key={p.key} value={p.key}>
               {p.label}{p.key === currentMonthKey() ? ' (mes actual)' : ''}
             </option>
           ))}
         </select>
+        {esRango && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 13, color: 'var(--muted)' }}>Desde</span>
+            <input type="date" className="filter-select" value={desde} onChange={(e) => setDesde(e.target.value)} />
+            <span style={{ fontSize: 13, color: 'var(--muted)' }}>Hasta</span>
+            <input type="date" className="filter-select" value={hasta} onChange={(e) => setHasta(e.target.value)} />
+          </div>
+        )}
         <span style={{ color: 'var(--muted)' }}>{s.total} tickets en el período</span>
       </div>
 
@@ -68,14 +90,14 @@ export default function StatsTab({ tickets }) {
         <div className="stat-card">
           <div className="label">Total de tickets</div>
           <div className="value">{s.total}</div>
-          <div className="sub">{periodLabel(mes)}</div>
+          <div className="sub">{periodoTexto}</div>
         </div>
       </div>
 
       <div className="panels-grid">
         {/* Tickets generados por día */}
         <div className="panel full">
-          <h3>{s.anual ? 'Tickets generados en el año (por mes)' : 'Tickets generados en el mes (por día)'}</h3>
+          <h3>{`Tickets generados (${s.serieUnidad === 'mes' ? 'por mes' : 'por día'})`}</h3>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={s.porDia}>
               <XAxis dataKey="dia" fontSize={11} />
