@@ -7,11 +7,12 @@
 //  2. Eventos:                           DCSM-D{AA}{MM}-{XXX}
 //     XXX = correlativo mensual de eventos (parte en 001).
 //
-//  3. Mant. Preventivo / Correctivo /    DCSM-{AAAA}-{DD}{NN}
+//  3. Mant. Preventivo / Correctivo /    DCSM-{AAAA}-{MM}{DD}-{NN}
 //     Proyecto:
-//     AAAA = año completo (ej: 2026), DD = día del mes de la fecha de inicio
-//     (01-31), NN = correlativo que parte en 00 y aumenta +1 por cada ticket
-//     de estos tipos creado el mismo día (00, 01, 02, …).
+//     AAAA = año completo (ej: 2026), MM = mes (01-12) y DD = día (01-31) de la
+//     fecha de inicio, NN = correlativo que parte en 00 y aumenta +1 por cada
+//     ticket de estos tipos creado ese mismo día concreto (00, 01, 02, …).
+//     Ej: 17-jun → DCSM-2026-0617-00 ; 17-jul → DCSM-2026-0717-00.
 //
 // Para evitar choques con datos ya cargados, el correlativo se calcula a partir
 // del MAYOR correlativo ya existente para ese prefijo (no contando filas).
@@ -50,7 +51,7 @@ export async function generarCodigo(supabase, tipo, fechaInicioISO) {
 
   // ── Formato 3: Mant. Preventivo / Correctivo / Proyecto ──
   if (TIPOS_FORMATO_DIA.includes(tipo)) {
-    const prefix = `DCSM-${year}-${DD}`          // seguido de NN (2 dígitos)
+    const prefix = `DCSM-${year}-${MM}${DD}-`    // seguido de NN (2 dígitos)
     const max = await maxCorrelativo(supabase, prefix, 2)
     const NN = String(max + 1).padStart(2, '0')  // parte en 00 si no hay ninguno
     return `${prefix}${NN}`
