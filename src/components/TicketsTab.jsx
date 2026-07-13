@@ -184,7 +184,7 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
     const GRIS_CLARO  = 'F1F5F9'
     const BLANCO      = 'FFFFFF'
 
-    const headers = ['Código', 'Tipo', 'Clasificación', 'Título', 'Descripción', 'Activo', 'Sistema', 'Especialidad', 'Jornada', 'Ubicación', 'Registrado por', 'Inicio', 'Fin', 'Cierre', 'Tiempo abierto', 'Estado']
+    const headers = ['Código', 'Tipo', 'Clasificación', 'Título', 'Descripción', 'Activo', 'Sistema', 'Especialidad', 'Jornada', 'Ubicación', 'Registrado por', 'Inicio', 'Fin programada', 'Cierre', 'Tiempo abierto', 'Estado']
     const rows = filtered.map((t) => [
       t.codigo || '',
       tipoLabel(t.tipo_ticket),
@@ -312,7 +312,7 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
       const jornIdx    = headerRow.findIndex(h => low(h).includes('jornada'))
       const regIdx     = headerRow.findIndex(h => low(h).includes('registrado'))
       const inicioIdx  = headerRow.findIndex(h => low(h) === 'inicio' || low(h).includes('fecha inicio') || low(h).includes('fecha de inicio'))
-      const finIdx     = headerRow.findIndex(h => low(h) === 'fin' || low(h).includes('fecha fin') || low(h).includes('fecha de fin'))
+      const finIdx     = headerRow.findIndex(h => low(h).includes('fin programada') || low(h) === 'fin' || low(h).includes('fecha fin'))
       const cierreIdx  = headerRow.findIndex(h => low(h) === 'cierre')
       const estadoIdx  = headerRow.findIndex(h => low(h) === 'estado')
 

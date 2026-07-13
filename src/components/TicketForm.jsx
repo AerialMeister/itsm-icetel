@@ -52,7 +52,7 @@ export default function TicketForm({ initial, onClose, onSaved }) {
   const [fechaInicio, setFecha] = useState(toLocalInput(initial?.fecha_inicio) || '')
   // Fecha de fin/término: para Proyecto y Mantenimientos se guarda como fecha_cierre
   // (esos tickets nacen cerrados). Se lee de fecha_fin (legado) o fecha_cierre.
-  const [fechaFin, setFechaFin] = useState(toLocalInput(initial?.fecha_fin || initial?.fecha_cierre) || '')
+  const [fechaFin, setFechaFin] = useState(toLocalInput(initial?.fecha_fin) || '')
   const [saving, setSaving]     = useState(false)
   const [error, setError]       = useState('')
 
@@ -138,13 +138,12 @@ export default function TicketForm({ initial, onClose, onSaved }) {
       registrado_por_nombre:    perfil?.nombre || user?.email || null,
     }
 
-    // Proyecto y Mantenimientos: la fecha de término es la fecha de cierre y
-    // el ticket nace cerrado (queda como registro/testimonio del trabajo).
-    // Para Evento/Incidente no tocamos estado ni cierre (los maneja el flujo normal).
+    // Proyecto y Mantenimientos: la fecha de fin es una FECHA FIN PROGRAMADA
+    // (planificada). El ticket nace ABIERTO; luego se cierra igual que un
+    // incidente y ahí se registra la fecha de cierre real (que calcula el
+    // tiempo que estuvo abierto).
     if (declaraTermino) {
-      const cierreISO = fechaFin ? new Date(fechaFin).toISOString() : null
-      payload.fecha_cierre = cierreISO
-      payload.estado = cierreISO ? 'cerrado' : 'abierto'
+      payload.fecha_fin = fechaFin ? new Date(fechaFin).toISOString() : null
     }
 
     let res
@@ -383,10 +382,10 @@ export default function TicketForm({ initial, onClose, onSaved }) {
             <DateTimePicker value={fechaInicio} onChange={setFecha} />
           </div>
 
-          {/* Fecha y hora de fin (Proyecto y Mantenimientos) — actúa como cierre */}
+          {/* Fecha y hora de fin programada (Proyecto y Mantenimientos) */}
           {declaraTermino && (
             <div className="field">
-              <label>Fecha y hora de fin <span className="hint">(al indicarla, el ticket queda cerrado)</span></label>
+              <label>Fecha y hora de fin programada <span className="hint">(planificada; el ticket nace abierto)</span></label>
               <DateTimePicker value={fechaFin} onChange={setFechaFin} />
             </div>
           )}
