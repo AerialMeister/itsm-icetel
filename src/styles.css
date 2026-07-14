@@ -114,6 +114,12 @@ tbody tr:last-child td { border-bottom: none; }
 
 .row-actions { display: flex; gap: 2px; flex-wrap: nowrap; }
 
+/* Encabezados ordenables */
+.th-sort { cursor: pointer; user-select: none; white-space: nowrap; }
+.th-sort .th-sort-inner { display: inline-flex; align-items: center; gap: 5px; }
+.th-sort .sort-ind { font-size: 10px; color: var(--muted); opacity: .8; }
+.th-sort:hover .sort-ind { color: var(--text); opacity: 1; }
+
 /* Control segmentado Hoy / Todos */
 .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .seg-btn { border: none; background: #fff; padding: 8px 14px; font-size: 14px; color: var(--text); }

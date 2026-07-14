@@ -62,6 +62,9 @@ const TIPOS_NO_INCIDENTE = ['evento', 'mantenimiento_preventivo', 'mantenimiento
 
 const MESES_CORTOS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
 
+// Usuario que registró: parte antes del @ (farredondo@icetel.cl -> farredondo)
+const userShort = (s) => (s ? String(s).split('@')[0] : 'Sin usuario')
+
 // Mapeo de slug de sistema → área equivalente (para el gráfico "Tickets por área y tipo")
 const SISTEMA_A_AREA = {
   'electrico':          'Energía',
@@ -127,6 +130,9 @@ export function computeStats(allTickets, key, rango) {
   // Usa ubicacion_activo (viene de la CMDB via la función enriquecida)
   const porZona   = rankBy(incidentes, (t) => t.ubicacion_activo || '')
   const porActivo = rankBy(incidentes, (t) => t.activo)
+
+  // Ranking de usuarios que más tickets han registrado (todos los tipos)
+  const porUsuario = rankBy(tickets, (t) => userShort(t.registrado_por_nombre))
 
   // Tickets por área derivada del sistema del activo
   // Agrupa usando SISTEMA_A_AREA; tickets sin sistema van a "Sin sistema"
@@ -236,6 +242,7 @@ export function computeStats(allTickets, key, rango) {
     porClasificacion,
     porZona,
     porActivo,
+    porUsuario,
     porArea,
     mttrMs,
     mttrCount: incidentesCerrados.length,

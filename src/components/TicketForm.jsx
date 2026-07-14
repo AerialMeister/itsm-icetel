@@ -150,7 +150,21 @@ export default function TicketForm({ initial, onClose, onSaved }) {
     if (editing) {
       // Al editar no sobreescribimos quién lo registró originalmente
       const { registrado_por, registrado_por_nombre, ...editPayload } = payload
-      res = await supabase.from('tickets').update(editPayload).eq('id', initial.id)
+      // Si el ticket se transforma en incidente (antes era otro tipo), su código
+      // pasa a ser de incidente. Reintenta si el código chocara.
+      const seVuelveIncidente = tipo === 'incidente' && initial.tipo_ticket !== 'incidente'
+      let intento = 0
+      do {
+        if (seVuelveIncidente) {
+          editPayload.codigo = await generarCodigo(supabase, 'incidente', payload.fecha_inicio)
+        }
+        res = await supabase.from('tickets').update(editPayload).eq('id', initial.id)
+        intento++
+      } while (
+        seVuelveIncidente && res.error &&
+        /uq_tickets_codigo|duplicate key|23505/i.test(res.error.message || '') &&
+        intento < 6
+      )
     } else {
       // Genera el código y, si justo choca con otro (código duplicado),
       // reintenta: al recalcular tomará el siguiente correlativo libre.

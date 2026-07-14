@@ -37,6 +37,31 @@ const tiempoAbierto = (t) => {
   return 'En curso'
 }
 
+// Usuario que registró: parte antes del @ (farredondo@icetel.cl -> farredondo)
+const usuarioCorto = (s) => (s ? String(s).split('@')[0] : '—')
+
+// Valor comparable de un ticket para ordenar por una columna
+const getSortValue = (t, campo) => {
+  switch (campo) {
+    case 'codigo':       return t.codigo || ''
+    case 'tipo':         return tipoLabel(t.tipo_ticket) || ''
+    case 'titulo':       return t.titulo || ''
+    case 'descripcion':  return t.descripcion || ''
+    case 'activo':       return t.activo || ''
+    case 'usuario':      return usuarioCorto(t.registrado_por_nombre)
+    case 'fecha_inicio': return t.fecha_inicio ? new Date(t.fecha_inicio).getTime() : null
+    case 'fecha_cierre': return t.fecha_cierre ? new Date(t.fecha_cierre).getTime() : null
+    case 'tiempo': {
+      if (!t.fecha_inicio) return null
+      const ini = new Date(t.fecha_inicio).getTime()
+      const fin = t.estado === 'cerrado' && t.fecha_cierre ? new Date(t.fecha_cierre).getTime() : Date.now()
+      return fin - ini
+    }
+    case 'estado':       return t.estado || ''
+    default:             return ''
+  }
+}
+
 // Convierte un valor de celda (texto es-CL, ISO, Date o serial de Excel) a ISO
 const parseFecha = (v) => {
   if (v === null || v === undefined || String(v).trim() === '') return null
@@ -137,7 +162,10 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
   const [filtroEstado, setFiltroEstado] = useState('')
   const [filtroFechaDesde, setFiltroFechaDesde] = useState('')
   const [filtroFechaHasta, setFiltroFechaHasta] = useState('')
+  const [filtroCierreDesde, setFiltroCierreDesde] = useState('')
+  const [filtroCierreHasta, setFiltroCierreHasta] = useState('')
   const [scope, setScope] = useState('todos')
+  const [sort, setSort] = useState({ campo: null, dir: 'asc' })
 
   // Importación
   const fileInputRef = useRef(null)
@@ -165,6 +193,16 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
         hasta.setHours(23, 59, 59)
         if (new Date(t.fecha_inicio) > hasta) return false
       }
+      // Filtro por fecha de cierre (solo tickets cerrados dentro del rango)
+      if (filtroCierreDesde) {
+        if (!t.fecha_cierre) return false
+        if (new Date(t.fecha_cierre) < new Date(filtroCierreDesde)) return false
+      }
+      if (filtroCierreHasta) {
+        if (!t.fecha_cierre) return false
+        const h = new Date(filtroCierreHasta); h.setHours(23, 59, 59)
+        if (new Date(t.fecha_cierre) > h) return false
+      }
       if (search) {
         const s = search.toLowerCase()
         const hay = [t.codigo, t.titulo, t.descripcion, t.activo].filter(Boolean).join(' ').toLowerCase()
@@ -172,10 +210,41 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
       }
       return true
     })
-  }, [tickets, search, filtroTipo, filtroEstado, filtroFechaDesde, filtroFechaHasta, scope])
+  }, [tickets, search, filtroTipo, filtroEstado, filtroFechaDesde, filtroFechaHasta, filtroCierreDesde, filtroCierreHasta, scope])
+
+  // Orden aplicado según la columna elegida (responsivo a los datos)
+  const sorted = useMemo(() => {
+    if (!sort.campo) return filtered
+    const arr = [...filtered]
+    arr.sort((a, b) => {
+      const va = getSortValue(a, sort.campo)
+      const vb = getSortValue(b, sort.campo)
+      if (va == null && vb == null) return 0
+      if (va == null) return 1
+      if (vb == null) return -1
+      let cmp
+      if (typeof va === 'number' && typeof vb === 'number') cmp = va - vb
+      else cmp = String(va).localeCompare(String(vb), 'es', { numeric: true, sensitivity: 'base' })
+      return sort.dir === 'asc' ? cmp : -cmp
+    })
+    return arr
+  }, [filtered, sort])
+
+  const toggleSort = (campo) =>
+    setSort((s) => (s.campo === campo ? { campo, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { campo, dir: 'asc' }))
 
   const afterSave = () => { setShowForm(false); setEditTicket(null); reload() }
   const afterClose = () => { setCloseTicket(null); reload() }
+
+  // Encabezado de columna ordenable con indicador ▲/▼ (⇅ = sin ordenar)
+  const SortTh = ({ campo, children }) => (
+    <th className="th-sort" onClick={() => toggleSort(campo)} title="Ordenar por esta columna">
+      <span className="th-sort-inner">
+        {children}
+        <span className="sort-ind">{sort.campo === campo ? (sort.dir === 'asc' ? '▲' : '▼') : '⇅'}</span>
+      </span>
+    </th>
+  )
 
   // ── Descarga XLSX formateada ──
   const descargarXLSX = () => {
@@ -185,7 +254,7 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
     const BLANCO      = 'FFFFFF'
 
     const headers = ['Código', 'Tipo', 'Clasificación', 'Título', 'Descripción', 'Activo', 'Sistema', 'Especialidad', 'Jornada', 'Ubicación', 'Registrado por', 'Inicio', 'Fin programada', 'Cierre', 'Tiempo abierto', 'Estado']
-    const rows = filtered.map((t) => [
+    const rows = sorted.map((t) => [
       t.codigo || '',
       tipoLabel(t.tipo_ticket),
       t.clasificacion_incidente ? clasifLabel(t.clasificacion_incidente) : '',
@@ -397,15 +466,28 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
         </select>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 13, color: 'var(--muted)', whiteSpace: 'nowrap' }}>Desde</span>
+          <span style={{ fontSize: 13, color: 'var(--muted)', whiteSpace: 'nowrap' }}>Inicio desde</span>
           <input type="date" className="filter-select" value={filtroFechaDesde}
             onChange={(e) => setFiltroFechaDesde(e.target.value)} />
-          <span style={{ fontSize: 13, color: 'var(--muted)', whiteSpace: 'nowrap' }}>Hasta</span>
+          <span style={{ fontSize: 13, color: 'var(--muted)', whiteSpace: 'nowrap' }}>hasta</span>
           <input type="date" className="filter-select" value={filtroFechaHasta}
             onChange={(e) => setFiltroFechaHasta(e.target.value)} />
           {(filtroFechaDesde || filtroFechaHasta) && (
             <button className="btn-ghost" style={{ fontSize: 12, color: 'var(--muted)' }}
               onClick={() => { setFiltroFechaDesde(''); setFiltroFechaHasta('') }}>✕</button>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 13, color: 'var(--muted)', whiteSpace: 'nowrap' }}>Cerrado desde</span>
+          <input type="date" className="filter-select" value={filtroCierreDesde}
+            onChange={(e) => setFiltroCierreDesde(e.target.value)} />
+          <span style={{ fontSize: 13, color: 'var(--muted)', whiteSpace: 'nowrap' }}>hasta</span>
+          <input type="date" className="filter-select" value={filtroCierreHasta}
+            onChange={(e) => setFiltroCierreHasta(e.target.value)} />
+          {(filtroCierreDesde || filtroCierreHasta) && (
+            <button className="btn-ghost" style={{ fontSize: 12, color: 'var(--muted)' }}
+              onClick={() => { setFiltroCierreDesde(''); setFiltroCierreHasta('') }}>✕</button>
           )}
         </div>
 
@@ -439,24 +521,25 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
         <table>
           <thead>
             <tr>
-              <th>Código</th>
-              <th>Tipo</th>
-              <th>Título</th>
-              <th>Descripción</th>
-              <th>Activo</th>
-              <th>Inicio</th>
-              <th>Cierre</th>
-              <th>Tiempo abierto</th>
-              <th>Estado</th>
+              <SortTh campo="codigo">Código</SortTh>
+              <SortTh campo="tipo">Tipo</SortTh>
+              <SortTh campo="titulo">Título</SortTh>
+              <SortTh campo="descripcion">Descripción</SortTh>
+              <SortTh campo="activo">Activo</SortTh>
+              <SortTh campo="usuario">Usuario</SortTh>
+              <SortTh campo="fecha_inicio">Inicio</SortTh>
+              <SortTh campo="fecha_cierre">Cierre</SortTh>
+              <SortTh campo="tiempo">Tiempo abierto</SortTh>
+              <SortTh campo="estado">Estado</SortTh>
               <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><td colSpan={10} className="empty">Cargando tickets…</td></tr>}
-            {!loading && filtered.length === 0 && (
-              <tr><td colSpan={10} className="empty">No hay tickets que mostrar.</td></tr>
+            {loading && <tr><td colSpan={11} className="empty">Cargando tickets…</td></tr>}
+            {!loading && sorted.length === 0 && (
+              <tr><td colSpan={11} className="empty">No hay tickets que mostrar.</td></tr>
             )}
-            {!loading && filtered.map((t) => {
+            {!loading && sorted.map((t) => {
               const Ico = TIPO_ICONS[TIPOS.find((x) => x.value === t.tipo_ticket)?.icon] || (() => null)
               const nComments = commentCounts[t.id] || 0
               const nFiles = attachmentCounts[t.id] || 0
@@ -475,6 +558,7 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
                   <td>{t.titulo}</td>
                   <td className="desc-cell" title={t.descripcion || ''}>{t.descripcion || '—'}</td>
                   <td>{t.activo || '—'}</td>
+                  <td>{usuarioCorto(t.registrado_por_nombre)}</td>
                   <td>{fmt(t.fecha_inicio)}</td>
                   <td>{fmt(t.fecha_cierre)}</td>
                   <td>{tiempoAbierto(t)}</td>

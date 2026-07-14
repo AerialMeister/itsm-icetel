@@ -186,6 +186,23 @@ export default function StatsTab({ tickets }) {
           )}
         </div>
 
+        {/* Ranking de usuarios con más tickets registrados */}
+        <div className="panel full">
+          <h3>Ranking de usuarios con más tickets</h3>
+          {s.porUsuario.length === 0 ? <div className="empty">Sin datos.</div> : (
+            <ResponsiveContainer width="100%" height={Math.max(200, Math.min(s.porUsuario.length, 12) * 34)}>
+              <BarChart data={s.porUsuario.slice(0, 12)} layout="vertical" margin={{ left: 20 }}>
+                <XAxis type="number" allowDecimals={false} fontSize={11} />
+                <YAxis type="category" dataKey="name" width={130} fontSize={11} />
+                <Tooltip />
+                <Bar dataKey="count" name="Tickets" fill="#0891b2" radius={[0, 3, 3, 0]}>
+                  <LabelList dataKey="count" position="right" fontSize={11} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
         {/* Tickets por área y tipo (derivado del sistema del activo) */}
         <div className="panel full">
           <h3>Tickets por área y tipo</h3>
