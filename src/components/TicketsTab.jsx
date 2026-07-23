@@ -44,6 +44,17 @@ const tiempoAbierto = (t) => {
 // Usuario que registró: parte antes del @ (farredondo@icetel.cl -> farredondo)
 const usuarioCorto = (s) => (s ? String(s).split('@')[0] : '—')
 
+// Número de semana del año (semana 1 = la que contiene el 1 de enero; lunes a domingo)
+const semanaDelAnio = (iso) => {
+  if (!iso) return null
+  const d = new Date(iso)
+  const y = d.getFullYear()
+  // Día del año usando solo la fecha local (sin horas ni desfase por horario de verano)
+  const dias = Math.round((Date.UTC(y, d.getMonth(), d.getDate()) - Date.UTC(y, 0, 1)) / 86400000)
+  const startDow = (new Date(y, 0, 1).getDay() + 6) % 7 // lunes=0 … domingo=6
+  return Math.floor((dias + startDow) / 7) + 1
+}
+
 // Deriva la especialidad de un ticket.
 //  - Mant./Correctivo/Proyecto: la traen guardada en `area`.
 //  - Evento/Incidente: se asimila del sistema del activo declarado.
@@ -71,6 +82,7 @@ const getSortValue = (t, campo) => {
     case 'tipo':         return tipoLabel(t.tipo_ticket) || ''
     case 'titulo':       return t.titulo || ''
     case 'descripcion':  return t.descripcion || ''
+    case 'semana':       return t.fecha_inicio ? semanaDelAnio(t.fecha_inicio) : null
     case 'activo':       return t.activo || ''
     case 'especialidad': return espLabelDe(t)
     case 'usuario':      return usuarioCorto(t.registrado_por_nombre)
@@ -551,6 +563,7 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
               <SortTh campo="titulo">Título</SortTh>
               <SortTh campo="especialidad">Esp.</SortTh>
               <SortTh campo="descripcion">Descripción</SortTh>
+              <SortTh campo="semana">Sem.</SortTh>
               <SortTh campo="activo">Activo</SortTh>
               <SortTh campo="usuario">Usuario</SortTh>
               <SortTh campo="fecha_inicio">Inicio</SortTh>
@@ -561,9 +574,9 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><td colSpan={12} className="empty">Cargando tickets…</td></tr>}
+            {loading && <tr><td colSpan={13} className="empty">Cargando tickets…</td></tr>}
             {!loading && sorted.length === 0 && (
-              <tr><td colSpan={12} className="empty">No hay tickets que mostrar.</td></tr>
+              <tr><td colSpan={13} className="empty">No hay tickets que mostrar.</td></tr>
             )}
             {!loading && sorted.map((t) => {
               const Ico = TIPO_ICONS[TIPOS.find((x) => x.value === t.tipo_ticket)?.icon] || (() => null)
@@ -589,6 +602,7 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
                     return <span title={label} style={{ color, display: 'inline-flex', justifyContent: 'center' }}><Icon size={20} /></span>
                   })()}</td>
                   <td className="desc-cell" title={t.descripcion || ''}>{t.descripcion || '—'}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{t.fecha_inicio ? 'S' + semanaDelAnio(t.fecha_inicio) : '—'}</td>
                   <td>{t.activo || '—'}</td>
                   <td>{usuarioCorto(t.registrado_por_nombre)}</td>
                   <td>{fmt(t.fecha_inicio)}</td>
