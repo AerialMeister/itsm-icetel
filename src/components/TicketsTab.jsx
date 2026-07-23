@@ -5,7 +5,11 @@ import {
   CLASIFICACIONES_INCIDENTE, CLASIFICACIONES_EVENTO, CLASIFICACIONES_PROYECTO,
   tipoLabel, tipoColor, clasifLabel, areaLabel, jornadaLabel,
 } from '../constants'
-import { TIPO_ICONS, IconPencil, IconNote, IconPlus, IconLock, IconClip, IconDownload, IconAlertClock } from './Icons'
+import { TIPO_ICONS, IconPencil, IconNote, IconPlus, IconLock, IconClip, IconDownload, IconAlertClock, IconEspEnergia, IconEspClima, IconEspServicios } from './Icons'
+
+// Deshabilita la función de adjuntar archivos (oculta el clip). Cambiar a true
+// para volver a habilitarla en el futuro; el resto del código se conserva.
+const ADJUNTOS_HABILITADO = false
 import { supabase } from '../supabaseClient'
 import TicketForm from './TicketForm'
 import CommentsModal from './CommentsModal'
@@ -40,6 +44,26 @@ const tiempoAbierto = (t) => {
 // Usuario que registró: parte antes del @ (farredondo@icetel.cl -> farredondo)
 const usuarioCorto = (s) => (s ? String(s).split('@')[0] : '—')
 
+// Deriva la especialidad de un ticket.
+//  - Mant./Correctivo/Proyecto: la traen guardada en `area`.
+//  - Evento/Incidente: se asimila del sistema del activo declarado.
+const derivarEspecialidad = (t) => {
+  if (t.area) return t.area
+  const sis = String(t.sistema_slug || t.sistema || '')
+    .toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  if (sis.includes('mecan')) return 'clima'
+  if (sis.includes('arquitect')) return 'servicios_generales'
+  if (sis.includes('electric') || sis.includes('telecom')) return 'energia'
+  return null
+}
+
+const ESP_META = {
+  energia:             { Icon: IconEspEnergia,   color: '#eab308', label: 'Energía' },
+  clima:               { Icon: IconEspClima,     color: '#38bdf8', label: 'Clima' },
+  servicios_generales: { Icon: IconEspServicios, color: '#2563eb', label: 'Servicios generales' },
+}
+const espLabelDe = (t) => { const e = derivarEspecialidad(t); return e ? ESP_META[e].label : '' }
+
 // Valor comparable de un ticket para ordenar por una columna
 const getSortValue = (t, campo) => {
   switch (campo) {
@@ -48,6 +72,7 @@ const getSortValue = (t, campo) => {
     case 'titulo':       return t.titulo || ''
     case 'descripcion':  return t.descripcion || ''
     case 'activo':       return t.activo || ''
+    case 'especialidad': return espLabelDe(t)
     case 'usuario':      return usuarioCorto(t.registrado_por_nombre)
     case 'fecha_inicio': return t.fecha_inicio ? new Date(t.fecha_inicio).getTime() : null
     case 'fecha_cierre': return t.fecha_cierre ? new Date(t.fecha_cierre).getTime() : null
@@ -262,7 +287,7 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
       t.descripcion || '',
       t.activo || '',
       t.sistema || '',
-      t.area ? areaLabel(t.area) : '',
+      espLabelDe(t),
       t.jornada ? jornadaLabel(t.jornada) : '',
       t.ubicacion_activo || '',
       t.registrado_por_nombre || '',
@@ -524,6 +549,7 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
               <SortTh campo="codigo">Código</SortTh>
               <SortTh campo="tipo">Tipo</SortTh>
               <SortTh campo="titulo">Título</SortTh>
+              <SortTh campo="especialidad">Esp.</SortTh>
               <SortTh campo="descripcion">Descripción</SortTh>
               <SortTh campo="activo">Activo</SortTh>
               <SortTh campo="usuario">Usuario</SortTh>
@@ -535,9 +561,9 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><td colSpan={11} className="empty">Cargando tickets…</td></tr>}
+            {loading && <tr><td colSpan={12} className="empty">Cargando tickets…</td></tr>}
             {!loading && sorted.length === 0 && (
-              <tr><td colSpan={11} className="empty">No hay tickets que mostrar.</td></tr>
+              <tr><td colSpan={12} className="empty">No hay tickets que mostrar.</td></tr>
             )}
             {!loading && sorted.map((t) => {
               const Ico = TIPO_ICONS[TIPOS.find((x) => x.value === t.tipo_ticket)?.icon] || (() => null)
@@ -556,6 +582,12 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
                     )}
                   </td>
                   <td>{t.titulo}</td>
+                  <td style={{ textAlign: 'center' }}>{(() => {
+                    const e = derivarEspecialidad(t)
+                    if (!e) return <span style={{ color: 'var(--muted)' }}>—</span>
+                    const { Icon, color, label } = ESP_META[e]
+                    return <span title={label} style={{ color, display: 'inline-flex', justifyContent: 'center' }}><Icon size={20} /></span>
+                  })()}</td>
                   <td className="desc-cell" title={t.descripcion || ''}>{t.descripcion || '—'}</td>
                   <td>{t.activo || '—'}</td>
                   <td>{usuarioCorto(t.registrado_por_nombre)}</td>
@@ -577,11 +609,13 @@ export default function TicketsTab({ tickets, commentCounts, attachmentCounts, l
                           <IconNote size={16} className={nComments ? 'icon-note' : ''} />
                         </CountBadge>
                       </button>
-                      <button className="btn-ghost" title="Informes adjuntos" onClick={() => setAttachTicket(t)}>
-                        <CountBadge count={nFiles}>
-                          <IconClip size={16} className={nFiles ? 'icon-clip' : ''} />
-                        </CountBadge>
-                      </button>
+                      {ADJUNTOS_HABILITADO && (
+                        <button className="btn-ghost" title="Informes adjuntos" onClick={() => setAttachTicket(t)}>
+                          <CountBadge count={nFiles}>
+                            <IconClip size={16} className={nFiles ? 'icon-clip' : ''} />
+                          </CountBadge>
+                        </button>
+                      )}
                       {t.estado === 'abierto' && (
                         <button className="btn-ghost" title="Cerrar ticket" style={{ color: '#dc2626' }}
                           onClick={() => setCloseTicket(t)}>

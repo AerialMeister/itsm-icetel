@@ -19,7 +19,12 @@ export default function App() {
 
     const { data: tk, error } = await supabase.rpc('itsm_tickets_enriquecidos')
     if (error) { setLoadError(error.message); setLoading(false); return }
-    setTickets(tk || [])
+    // La función enriquecida puede no traer `area` (especialidad); la completamos
+    // desde la tabla para poder mostrar el ícono de especialidad en la lista.
+    const { data: areas } = await supabase.from('tickets').select('id, area')
+    const areaPorId = {}
+    ;(areas || []).forEach((a) => { areaPorId[a.id] = a.area })
+    setTickets((tk || []).map((t) => ({ ...t, area: t.area ?? areaPorId[t.id] })))
 
     const { data: cm } = await supabase.from('ticket_comentarios').select('ticket_id')
     const counts = {}

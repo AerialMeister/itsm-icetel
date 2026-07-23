@@ -27,6 +27,12 @@ export const IconProyecto = (p) => <S {...p}><path d="M9 2h6a1 1 0 0 1 1 1v2H8V3
 export const IconSol  = (p) => <S {...p}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></S>
 export const IconLuna = (p) => <S {...p}><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" /></S>
 
+// Íconos de especialidad (para la columna de la tabla de tickets)
+// Energía: rayo (relleno); Clima: copo de nieve; Servicios generales: casa
+export const IconEspEnergia   = (p) => <S {...p} fill="currentColor" stroke="none"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" /></S>
+export const IconEspClima     = (p) => <S {...p}><line x1="12" y1="2" x2="12" y2="22" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="5.6" y1="5.6" x2="18.4" y2="18.4" /><line x1="18.4" y1="5.6" x2="5.6" y2="18.4" /></S>
+export const IconEspServicios = (p) => <S {...p}><path d="M3 11l9-8 9 8" /><path d="M5 9.5V21h14V9.5" /><path d="M10 21v-6h4v6" /></S>
+
 export const TIPO_ICONS = {
   bell: IconBell,
   shield: IconShield,
