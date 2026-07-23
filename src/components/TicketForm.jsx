@@ -93,6 +93,24 @@ export default function TicketForm({ initial, onClose, onSaved }) {
     setActivo({ id: null, nombre: '' })
   }, [selectedGrupo])
 
+  // Al editar, la función enriquecida puede no devolver fecha_fin/area/jornada.
+  // Los leemos directo de la tabla para precargarlos en el formulario.
+  useEffect(() => {
+    if (!editing || !initial?.id) return
+    let cancel = false
+    supabase.from('tickets')
+      .select('fecha_fin, area, jornada')
+      .eq('id', initial.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancel || !data) return
+        if (data.fecha_fin) setFechaFin((p) => p || toLocalInput(data.fecha_fin))
+        if (data.area)      setEsp((p) => p || data.area)
+        if (data.jornada)   setJornada((p) => p || data.jornada)
+      })
+    return () => { cancel = true }
+  }, [editing, initial?.id])
+
   // Lista de sistemas + opción sintética "Otros"
   const sistemasUI = [
     ...sistemas,
